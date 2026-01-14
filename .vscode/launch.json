@@ -1,0 +1,25 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python Debugger: FastAPI",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": [
+                "main:app",
+                "--reload"
+            ],
+            // Load environment variables (e.g. S3_BUCKET_NAME) for local/debug runs.
+            "envFile": "${workspaceFolder}/.env",
+            // Send stdout/stderr to the VS Code integrated terminal (more reliable than Debug Console for server logs).
+            "console": "integratedTerminal",
+            // uvicorn --reload runs the app in a child process; this attaches the debugger to that subprocess.
+            "subProcess": true,
+            "jinja": true
+        }
+    ]
+}

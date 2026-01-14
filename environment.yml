@@ -1,0 +1,14 @@
+﻿name: aws-rag-bot
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - fastapi
+  - aioboto3
+  - tqdm
+  - langchain
+  - langchain-aws
+  - langchain-community
+  - ruff
+  - llama-index
+prefix: ./.conda
