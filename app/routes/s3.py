@@ -15,6 +15,8 @@ from app.services.s3_service import S3Service
 from fastapi import HTTPException
 from fastapi.responses import Response
 
+from starlette import status
+
 router = APIRouter(prefix="/s3", tags=["s3"])
 
 
@@ -67,9 +69,9 @@ async def get_file_content(
     try:
         content = await s3.get_file_content(key=file_name)
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="File not found") from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found") from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail="Failed to fetch file content") from exc
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to fetch file content") from exc
 
     if isinstance(content, str):
         return Response(content=content, media_type="text/plain; charset=utf-8")

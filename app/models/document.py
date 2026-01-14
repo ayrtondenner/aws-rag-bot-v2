@@ -12,3 +12,12 @@ class SplitTextResponse(BaseModel):
     chunk_size: int
     chunk_overlap: int
     chunks: list[str]
+
+
+class EmbedTextRequest(BaseModel):
+    text: str = Field(..., description="Input text to embed")
+
+
+class EmbedTextResponse(BaseModel):
+    dimensions: int
+    embedding: list[float]
