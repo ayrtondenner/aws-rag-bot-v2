@@ -2,13 +2,17 @@
 channels:
   - conda-forge
 dependencies:
+  - tqdm
   - python=3.11
   - fastapi
-  - aioboto3
-  - tqdm
-  - langchain
-  - langchain-aws
-  - langchain-community
   - ruff
-  - llama-index
+  - langchain
+  - langchain-community
+  - aioboto3
+  - langchain-aws
+  - google-genai
+  - google-adk
+  - pip
+  - pip:
+      - litellm
 prefix: ./.conda
