@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from starlette import status
 
 from app.routes.s3 import router as s3_router
+from app.routes.document import router as document_router
 from app.services.dependencies import (
     get_s3_setup_service,
 )
@@ -60,6 +61,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 app.include_router(s3_router)
+app.include_router(document_router)
 
 
 @app.exception_handler(S3ServiceError)

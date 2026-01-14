@@ -7,6 +7,7 @@ import aiohttp
 from fastapi import FastAPI, Request
 
 from app.services.config import S3Config
+from app.services.document_service import DocumentService
 from app.services.s3_service import S3Service
 from app.services.setup.s3_setup_service import S3SetupService
 
@@ -25,6 +26,12 @@ def get_s3_service() -> S3Service:
     """FastAPI dependency provider for an S3Service instance."""
 
     return S3Service(S3Config.from_env())
+
+
+def get_document_service() -> DocumentService:
+    """FastAPI dependency provider for a DocumentService instance."""
+
+    return DocumentService()
 
 
 def get_http_session_from_app(app: FastAPI) -> aiohttp.ClientSession:
