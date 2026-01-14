@@ -8,7 +8,38 @@ RAG (Retrieval-Augmented Generation) backend that ingests documents from AWS S3 
 - [ ] Hybrid search using OpenSearch
 - [ ] FastAPI unit tests
 - [ ] Swagger documentation
-- [ ] Google ADK agent
+- [x] Google ADK agent
+
+## Google ADK agent
+
+This repo includes an experimental agent layer built with **Google Agent Development Kit (ADK)**.
+
+### Current capabilities
+
+- **Root agent** that delegates to sub-agents.
+- **S3 sub-agent** (`s3_agent`) with tools to:
+	- Check whether an S3 bucket exists / is accessible.
+	- List objects in the configured bucket (optional prefix).
+	- Fetch an object's content by key.
+	- Transfer control back to the root agent when a request is not S3-related.
+
+### LLM model
+
+The agent is currently configured to use **AWS Bedrock – Claude Sonnet 4** via LiteLLM.
+By default it uses the cross-region inference profile:
+
+- Inference profile ID: `global.anthropic.claude-sonnet-4-20250514-v1:0`
+- Model ID: `anthropic.claude-sonnet-4-20250514-v1:0`
+
+### Running the agent (side-by-side with FastAPI)
+
+To avoid port conflicts with the FastAPI app, we run the ADK web UI on **port 8001**:
+
+```bash
+adk web --port 8001
+```
+
+This lets you keep FastAPI running on its usual port (commonly 8000) while testing the agent in parallel.
 
 ## API routes
 ### S3 API routes
