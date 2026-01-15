@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Optional
 
 from google.adk.tools.function_tool import FunctionTool
 from google.adk.agents.llm_agent import ToolUnion
@@ -9,24 +9,13 @@ from google.adk.tools.tool_context import ToolContext
 
 from app.models.document import LocalDocumentContentResponse, LocalDocumentsResponse
 from app.models.s3 import BucketExistsResponse, FileListResponse, S3FileContentResponse
-from app.services.config import S3Config
 from app.services.dependencies import get_document_service as get_document_service_dependency
 from app.services.dependencies import get_s3_service as get_s3_service_dependency
 from app.services.document_service import DocumentService
 from app.services.s3_service import S3Service
 
-from mcp.server.fastmcp import FastMCP
-
-mcp = FastMCP(
-    name="aws-rag-bot-mcp",
-    instructions=(
-        "Shared tool server for AWS RAG Bot. "
-        "Exposes S3 and local-document utilities designed to be reused by both "
-        "ADK agents and the MCP server."
-    ),
-)
-
-DEFAULT_SAGEMAKER_DOCS_BUCKET_NAME = S3Config.from_env().bucket_name.strip()
+# TODO: import this from S3 config instead
+DEFAULT_SAGEMAKER_DOCS_BUCKET_NAME = "senior-sagemaker-assessment-bucket"
 
 def _get_s3_service() -> S3Service:
     if not DEFAULT_SAGEMAKER_DOCS_BUCKET_NAME:
@@ -48,11 +37,7 @@ def transfer_to_root(tool_context: ToolContext) -> None:
 
     transfer_to_agent("root_agent", tool_context)
 
-@mcp.tool(
-    name="s3_bucket_exists",
-    description="Check whether an S3 bucket exists and is accessible.",
-)
-async def s3_bucket_exists(*, bucket_name: str = DEFAULT_SAGEMAKER_DOCS_BUCKET_NAME) -> dict[str, Any]:
+async def s3_bucket_exists(*, bucket_name: str = DEFAULT_SAGEMAKER_DOCS_BUCKET_NAME) -> BucketExistsResponse:
     """Check whether an S3 bucket exists and is accessible.
 
     Args:
@@ -64,17 +49,13 @@ async def s3_bucket_exists(*, bucket_name: str = DEFAULT_SAGEMAKER_DOCS_BUCKET_N
 
     s3 = _get_s3_service()
     exists = await s3.bucket_exists(bucket_name=bucket_name)
-    return BucketExistsResponse(bucket_name=bucket_name, exists=exists).model_dump()
+    return BucketExistsResponse(bucket_name=bucket_name, exists=exists)
 
-@mcp.tool(
-    name="s3_list_bucket_files",
-    description="List files (object keys) in the configured S3 bucket.",
-)
 async def s3_list_bucket_files(
     *,
     prefix: Optional[str] = None,
     max_keys: int = 1000,
-) -> dict[str, Any]:
+) -> FileListResponse:
     """List files (object keys) in an S3 bucket.
 
     Args:
@@ -87,17 +68,13 @@ async def s3_list_bucket_files(
 
     s3 = _get_s3_service()
     files = await s3.list_files(prefix=prefix, max_keys=max_keys)
-    return FileListResponse(count=len(files), files=files).model_dump()
+    return FileListResponse(count=len(files), files=files)
 
-@mcp.tool(
-    name="s3_get_file_content",
-    description="Fetch the text content of an S3 object.",
-)
 async def s3_get_file_content(
     *,
     key: str,
     encoding: str = "utf-8",
-) -> dict[str, Any]:
+) -> S3FileContentResponse:
     """Fetch the content of an S3 object.
 
     Args:
@@ -110,13 +87,9 @@ async def s3_get_file_content(
 
     s3 = _get_s3_service()
     content = await s3.get_file_content(key=key, encoding=encoding)
-    return S3FileContentResponse(filename=key, content=content).model_dump()
+    return S3FileContentResponse(filename=key, content=content)
 
-@mcp.tool(
-    name="list_local_sagemaker_docs",
-    description="List files in the local sagemaker-docs folder.",
-)
-async def list_local_sagemaker_docs() -> dict[str, Any]:
+async def list_local_sagemaker_docs() -> LocalDocumentsResponse:
     """List files in the local `sagemaker-docs` folder.
 
     Returns:
@@ -125,14 +98,9 @@ async def list_local_sagemaker_docs() -> dict[str, Any]:
 
     documents = _get_document_service()
     result = documents.list_local_sagemaker_docs()
-    return LocalDocumentsResponse.model_validate(result).model_dump()
+    return LocalDocumentsResponse.model_validate(result)
 
-
-@mcp.tool(
-    name="get_local_sagemaker_doc_content",
-    description="Get the text content of a local file in the sagemaker-docs folder by filename.",
-)
-async def get_local_sagemaker_doc_content(*, filename: str) -> dict[str, Any]:
+async def get_local_sagemaker_doc_content(*, filename: str) -> LocalDocumentContentResponse:
     """Read a local doc file content.
 
     Returns:
@@ -141,7 +109,7 @@ async def get_local_sagemaker_doc_content(*, filename: str) -> dict[str, Any]:
 
     documents = _get_document_service()
     content = documents.get_local_sagemaker_doc_content(filename=filename)
-    return LocalDocumentContentResponse(filename=filename, content=content).model_dump()
+    return LocalDocumentContentResponse(filename=filename, content=content)
 
 
 def build_s3_tools() -> list[ToolUnion]:
@@ -159,4 +127,3 @@ def build_document_tools() -> list[ToolUnion]:
         FunctionTool(get_local_sagemaker_doc_content),
         FunctionTool(transfer_to_root),
     ]
-

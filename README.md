@@ -94,11 +94,11 @@ adk web --port 8001
 
 This lets you keep FastAPI running on its usual port (commonly 8000) while testing the agent in parallel.
 
-## MCP server (Streamable HTTP / SSE)
+## MCP server
 
 This repo also includes an MCP server that exposes the same tool-style capabilities as the agent tools:
 
-The MCP tool implementations live in the same shared module as the ADK tools: `shared/tools.py`.
+The MCP tool implementations call same functions as the ADK tools in `shared/tools.py`.
 
 - `s3_bucket_exists`
 - `s3_list_bucket_files`
@@ -109,22 +109,16 @@ The MCP tool implementations live in the same shared module as the ADK tools: `s
 ### Run (Streamable HTTP)
 
 ```bash
-python -m mcp_server.main --transport streamable-http --host 127.0.0.1 --port 8001
+python -m mcp_server.main
 ```
 
-By default, Streamable HTTP is mounted at `/mcp`.
-
-### Run (SSE)
-
-```bash
-python -m mcp_server.main --transport sse --host 127.0.0.1 --port 8001
-```
+By default, FastMCP is mounted here at `/mcp` on port 8002.
 
 ### Required environment
 
 S3 tools require `S3_BUCKET_NAME` (unless you pass `bucket_name` to tools that accept it), and AWS credentials via the usual AWS environment variables/config.
 
-### Smoke test
+<!-- ### Smoke test
 
 With the MCP server running on `http://127.0.0.1:8001/mcp`:
 
@@ -136,7 +130,7 @@ Or let the script start/stop the server automatically:
 
 ```bash
 python scripts/mcp_smoke_test.py --start-server --host 127.0.0.1 --port 8001
-```
+``` -->
 
 ## API routes
 ### S3 API routes

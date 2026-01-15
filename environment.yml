@@ -14,7 +14,7 @@ dependencies:
   - google-adk
   - httpx
   - pytest
-  - mcp
+  - fastmcp
   - pip
   - pip:
       - litellm
