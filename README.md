@@ -22,6 +22,56 @@ This repo includes an experimental agent layer built with **Google Agent Develop
 	- List objects in the configured bucket (optional prefix).
 	- Fetch an object's content by key.
 	- Transfer control back to the root agent when a request is not S3-related.
+- **Local docs sub-agent** (`document_agent`) with tools to:
+	- List files in the local `sagemaker-docs/` folder.
+	- Transfer control back to the root agent when a request is not local-docs related.
+
+### Example conversations
+
+These are real-style examples based on the eval runs in `agent/evalset5d9e47.evalset.json`.
+
+#### Example 1 — S3 bucket checks, listing, and file content
+
+```text
+User: hi!
+Agent: Hello! I can help with S3 operations (bucket exists, list files, fetch content). What would you like to do?
+
+User: Check if the bucket for sagemaker docs is created
+Agent: (delegates to s3_agent) The SageMaker docs bucket exists and is accessible.
+
+User: And what about the "opensearch-vectors" bucket? Was it created already?
+Agent: (s3_agent) The "opensearch-vectors" bucket does not exist or is not accessible.
+
+User: Ok, back to sagemaker bucket. How many texts do we have stored in it?
+Agent: (s3_agent) Lists objects and summarizes the count (example output: 336 markdown files under `sagemaker-docs/`).
+
+User: Ok, give me content for file "sagemaker-algo-common-data-formats" in this bucket then
+Agent: (s3_agent) Fetches `sagemaker-docs/sagemaker-algo-common-data-formats.md` and returns its content.
+
+User: Is there a file named "sagemaker-random-ideas" stored in this bucket?
+Agent: (s3_agent) Searches by prefix and confirms no matching files.
+```
+
+Notes:
+
+- If you omit a bucket name, the agent uses the default bucket from `S3_BUCKET_NAME`.
+- For content fetches, providing the full key (e.g. `sagemaker-docs/<name>.md`) is the most reliable.
+
+#### Example 2 — Comparing local docs vs S3 docs (agent delegation)
+
+```text
+User: hi there!
+Agent: Hello! I can help with S3 bucket operations and local documentation tasks.
+
+User: I wanna check if we have the same amount of documents in both local folder and S3 bucket for sagemaker documentation.
+Agent: (root_agent) Starts with local docs.
+Agent: (delegates to document_agent) Counts files in `sagemaker-docs/`.
+Agent: (document_agent -> root_agent) Reports local count (example: 336).
+Agent: (delegates to s3_agent) Lists objects in the configured S3 bucket.
+Agent: Summarizes whether the counts match.
+```
+
+This is a good “handoff” example: the root agent coordinates the work, while sub-agents do the specialist operations and transfer control back when done.
 
 ### LLM model
 
