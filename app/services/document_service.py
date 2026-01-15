@@ -29,6 +29,10 @@ class DocumentService:
 		self._embedding_dim = embedding_dim or self._read_embedding_dim_from_env()
 
 	@staticmethod
+	def _docs_dir() -> Path:
+		return Path(__file__).resolve().parents[2] / "sagemaker-docs"
+
+	@staticmethod
 	def _read_embedding_dim_from_env() -> int:
 		raw = (os.getenv("BEDROCK_EMBEDDING_DIM") or "").strip()
 		if not raw:
@@ -102,12 +106,51 @@ class DocumentService:
 			A dict in the shape: {"count": int, "documents": list[str]}.
 		"""
 
-		docs_dir = Path(__file__).resolve().parents[2] / "sagemaker-docs"
+		docs_dir = self._docs_dir()
 		if not docs_dir.exists() or not docs_dir.is_dir():
 			return {"count": 0, "documents": []}
 
 		documents = sorted([p.name for p in docs_dir.iterdir() if p.is_file()])
 		return {"count": len(documents), "documents": documents}
+
+	def get_local_sagemaker_doc_content(self, *, filename: str, encoding: str = "utf-8") -> str:
+		"""Read a file from the local `sagemaker-docs` folder and return its text content.
+
+		Args:
+			filename: The filename within `sagemaker-docs` (no directory traversal).
+			encoding: Text decoding encoding.
+
+		Raises:
+			ValueError: If filename is missing/invalid.
+			FileNotFoundError: If the file does not exist in `sagemaker-docs`.
+			DocumentServiceError: If the file cannot be read.
+		"""
+
+		if filename is None or not str(filename).strip():
+			raise ValueError("filename must be provided")
+
+		filename = str(filename).strip()
+		# Disallow any path separators or traversal; this service only serves files at the docs root.
+		if "/" in filename or "\\" in filename or filename in {".", ".."}:
+			raise ValueError("filename must be a file in sagemaker-docs (no path separators)")
+		if ".." in filename:
+			raise ValueError("filename must not contain '..'")
+
+		docs_dir = self._docs_dir()
+		path = (docs_dir / filename).resolve()
+		try:
+			path.relative_to(docs_dir.resolve())
+		except Exception as exc:
+			raise ValueError("filename must resolve inside sagemaker-docs") from exc
+
+		if not path.exists() or not path.is_file():
+			raise FileNotFoundError(filename)
+
+		try:
+			return path.read_text(encoding=encoding, errors="replace")
+		except Exception as exc:
+			logger.exception("Failed to read local doc file: %s", filename)
+			raise DocumentServiceError("Failed to read local document") from exc
 
 	def _get_bedrock_embeddings_client(self):
 		"""Create a Bedrock embeddings client.

@@ -14,6 +14,8 @@ RAG (Retrieval-Augmented Generation) backend that ingests documents from AWS S3 
 
 This repo includes an experimental agent layer built with **Google Agent Development Kit (ADK)**.
 
+Agent tools are defined in a shared module so they can be reused by both the ADK agent layer and the MCP server: `shared/tools.py`.
+
 ### Current capabilities
 
 - **Root agent** that delegates to sub-agents.
@@ -24,6 +26,7 @@ This repo includes an experimental agent layer built with **Google Agent Develop
 	- Transfer control back to the root agent when a request is not S3-related.
 - **Local docs sub-agent** (`document_agent`) with tools to:
 	- List files in the local `sagemaker-docs/` folder.
+	- Fetch a local doc file's content by filename.
 	- Transfer control back to the root agent when a request is not local-docs related.
 
 ### Example conversations
@@ -91,6 +94,50 @@ adk web --port 8001
 
 This lets you keep FastAPI running on its usual port (commonly 8000) while testing the agent in parallel.
 
+## MCP server (Streamable HTTP / SSE)
+
+This repo also includes an MCP server that exposes the same tool-style capabilities as the agent tools:
+
+The MCP tool implementations live in the same shared module as the ADK tools: `shared/tools.py`.
+
+- `s3_bucket_exists`
+- `s3_list_bucket_files`
+- `s3_get_file_content`
+- `list_local_sagemaker_docs`
+- `get_local_sagemaker_doc_content`
+
+### Run (Streamable HTTP)
+
+```bash
+python -m mcp_server.main --transport streamable-http --host 127.0.0.1 --port 8001
+```
+
+By default, Streamable HTTP is mounted at `/mcp`.
+
+### Run (SSE)
+
+```bash
+python -m mcp_server.main --transport sse --host 127.0.0.1 --port 8001
+```
+
+### Required environment
+
+S3 tools require `S3_BUCKET_NAME` (unless you pass `bucket_name` to tools that accept it), and AWS credentials via the usual AWS environment variables/config.
+
+### Smoke test
+
+With the MCP server running on `http://127.0.0.1:8001/mcp`:
+
+```bash
+python scripts/mcp_smoke_test.py --url http://127.0.0.1:8001/mcp
+```
+
+Or let the script start/stop the server automatically:
+
+```bash
+python scripts/mcp_smoke_test.py --start-server --host 127.0.0.1 --port 8001
+```
+
 ## API routes
 ### S3 API routes
 
@@ -110,6 +157,8 @@ Base path: `/document`
 | Method | Path | Description | Query params | Body |
 | --- | --- | --- | --- | --- |
 | POST | `/document/chunks` | Split text into overlapping chunks. | `chunk_size` (optional), `chunk_overlap` (optional) | `{ "text": "..." }` |
+| GET | `/document/local-docs` | List files in the local `sagemaker-docs/` folder. | _None_ | _None_ |
+| GET | `/document/local-docs/content` | Get the text content of a local `sagemaker-docs/` file by filename. | `filename` (required) | _None_ |
 | POST | `/document/embed` | Generate an embedding vector for input text (Amazon Bedrock). | _None_ | `{ "text": "..." }` |
 
 ## Testing
