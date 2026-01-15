@@ -12,6 +12,8 @@ dependencies:
   - langchain-aws
   - google-genai
   - google-adk
+  - httpx
+  - pytest
   - pip
   - pip:
       - litellm

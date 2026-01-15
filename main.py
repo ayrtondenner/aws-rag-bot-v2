@@ -13,9 +13,6 @@ from app.services.dependencies import (
 )
 from app.services.s3_service import S3ServiceError
 
-# TODO: try to implement an agent for chatbot conversations
-
-
 def _ensure_logging() -> None:
     formatter = logging.Formatter("%(levelname)s: %(message)s")
     root = logging.getLogger()

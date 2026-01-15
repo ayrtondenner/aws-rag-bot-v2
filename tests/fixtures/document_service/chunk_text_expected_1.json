@@ -1,0 +1,10 @@
+{
+    "count": 3,
+    "chunk_size": 500,
+    "chunk_overlap": 50,
+    "chunks": [
+        "# Using the SageMaker Training and Inference Toolkits<a name=\"amazon-sagemaker-toolkits\"></a>",
+        "The [SageMaker Training](https://github.com/aws/sagemaker-training-toolkit) and [SageMaker Inference](https://github.com/aws/sagemaker-inference-toolkit) toolkits implement the functionality that you need to adapt your containers to run scripts, train algorithms, and deploy models on SageMaker. When installed, the library defines the following for users:\n+ The locations for storing code and other resources.",
+        "+ The entry point that contains the code to run when the container is started. Your Dockerfile must copy the code that needs to be run into the location expected by a container that is compatible with SageMaker. \n+ Other information that a container needs to manage deployments for training and inference."
+    ]
+}
