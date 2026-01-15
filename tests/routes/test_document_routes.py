@@ -10,11 +10,22 @@ from app.services.document_service import DocumentServiceError
 
 class StubDocumentService:
     def __init__(self):
+        self.local_docs_result: list[str] = ["a.md", "b.md"]
+        self.local_docs_exc: Exception | None = None
+
         self.chunk_text_result: list[str] = ["a", "b"]
         self.chunk_text_exc: Exception | None = None
 
         self.embed_text_result: list[float] = [0.1, 0.2, 0.3]
         self.embed_text_exc: Exception | None = None
+
+        self.seen: dict[str, object] = {}
+
+    def list_local_sagemaker_docs(self) -> dict[str, Any]:
+        self.seen["list_local_sagemaker_docs.called"] = True
+        if self.local_docs_exc is not None:
+            raise self.local_docs_exc
+        return {"count": len(self.local_docs_result), "documents": self.local_docs_result}
 
     def chunk_text(self, *, text: str, chunk_size: int = 500, chunk_overlap: int = 50) -> list[str]:
         if self.chunk_text_exc is not None:
@@ -41,6 +52,20 @@ def test_document_chunks_success(client, fastapi_app):
             "chunk_overlap": 50,
             "chunks": ["c1", "c2", "c3"],
         }
+    finally:
+        fastapi_app.dependency_overrides.clear()
+
+
+def test_document_local_docs_success(client, fastapi_app):
+    stub = StubDocumentService()
+    stub.local_docs_result = ["a.md", "b.md"]
+
+    fastapi_app.dependency_overrides[get_document_service] = lambda: stub
+    try:
+        resp = client.get("/document/local-docs")
+        assert resp.status_code == 200
+        assert resp.json() == {"count": 2, "documents": ["a.md", "b.md"]}
+        assert stub.seen["list_local_sagemaker_docs.called"] is True
     finally:
         fastapi_app.dependency_overrides.clear()
 

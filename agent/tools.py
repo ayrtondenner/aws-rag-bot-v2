@@ -8,9 +8,12 @@ from google.adk.agents.llm_agent import ToolUnion
 from google.adk.tools.transfer_to_agent_tool import transfer_to_agent
 from google.adk.tools.tool_context import ToolContext
 
+from app.models.document import LocalDocumentsResponse
 from app.models.s3 import BucketExistsResponse, FileListResponse
 from app.services.config import S3Config
+from app.services.dependencies import get_document_service as get_document_service_dependency
 from app.services.dependencies import get_s3_service as get_s3_service_dependency
+from app.services.document_service import DocumentService
 from app.services.s3_service import S3Service
 
 DEFAULT_SAGEMAKER_DOCS_BUCKET_NAME = S3Config.from_env().bucket_name.strip()
@@ -21,6 +24,11 @@ def _get_s3_service() -> S3Service:
 
     # Use the same constructor path as the FastAPI dependency for the default bucket.
     return get_s3_service_dependency()
+
+
+def _get_document_service() -> DocumentService:
+    # Use the same constructor path as the FastAPI dependency.
+    return get_document_service_dependency()
 
 
 async def s3_bucket_exists(*, bucket_name: str = DEFAULT_SAGEMAKER_DOCS_BUCKET_NAME) -> dict[str, Any]:
@@ -108,11 +116,39 @@ def s3_transfer_to_root(tool_context: ToolContext) -> None:
     transfer_to_agent("root_agent", tool_context)
 
 
+async def list_local_sagemaker_docs() -> dict[str, Any]:
+    """List files in the local `sagemaker-docs` folder.
+
+    Returns:
+        JSON with {count, documents:[filename,...]}.
+    """
+
+    documents = _get_document_service()
+    result = documents.list_local_sagemaker_docs()
+    return LocalDocumentsResponse.model_validate(result).model_dump()
+
+
+def document_transfer_to_root(tool_context: ToolContext) -> None:
+    """Transfer control back to the root agent.
+
+    Use this when the user's request is not about local documents.
+    """
+
+    transfer_to_agent("root_agent", tool_context)
+
+
 def build_s3_tools() -> list[ToolUnion]:
     return [
         FunctionTool(s3_bucket_exists),
         FunctionTool(s3_list_bucket_files),
         FunctionTool(s3_get_file_content),
         FunctionTool(s3_transfer_to_root),
+    ]
+
+
+def build_document_tools() -> list[ToolUnion]:
+    return [
+        FunctionTool(list_local_sagemaker_docs),
+        FunctionTool(document_transfer_to_root),
     ]
 

@@ -4,7 +4,13 @@ from __future__ import annotations
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from starlette import status
 
-from app.models.document import EmbedTextRequest, EmbedTextResponse, SplitTextRequest, SplitTextResponse
+from app.models.document import (
+	EmbedTextRequest,
+	EmbedTextResponse,
+	LocalDocumentsResponse,
+	SplitTextRequest,
+	SplitTextResponse,
+)
 from app.services.dependencies import get_document_service
 from app.services.document_service import DocumentService, DocumentServiceError
 
@@ -50,6 +56,14 @@ async def chunk_text(
 		raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 	return SplitTextResponse(count=len(chunks), chunk_size=chunk_size, chunk_overlap=chunk_overlap, chunks=chunks)
+
+
+@router.get("/local-docs", response_model=LocalDocumentsResponse)
+async def list_local_docs(
+	documents: DocumentService = Depends(get_document_service),
+) -> LocalDocumentsResponse:
+	result = documents.list_local_sagemaker_docs()
+	return LocalDocumentsResponse.model_validate(result)
 
 
 @router.post("/embed", response_model=EmbedTextResponse)

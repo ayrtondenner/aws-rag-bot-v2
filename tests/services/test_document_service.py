@@ -21,3 +21,19 @@ def test_chunk_text_fixture_case_1():
         "chunk_overlap": expected["chunk_overlap"],
         "chunks": chunks,
     } == expected
+
+
+def test_list_local_sagemaker_docs_returns_files():
+    service = DocumentService()
+    result = service.list_local_sagemaker_docs()
+
+    assert isinstance(result, dict)
+    assert "count" in result
+    assert "documents" in result
+    assert isinstance(result["count"], int)
+    assert isinstance(result["documents"], list)
+    assert result["count"] == len(result["documents"])
+
+    # This repository includes SageMaker docs in the local folder.
+    assert result["count"] > 0
+    assert "amazon-sagemaker-toolkits.md" in result["documents"]

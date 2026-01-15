@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 from typing import Optional
 
 from langchain_aws import BedrockEmbeddings as LangchainAwsBedrockEmbeddings
@@ -93,6 +94,20 @@ class DocumentService:
 			chunk_overlap=chunk_overlap,
 		)
 		return splitter.split_text(text)
+
+	def list_local_sagemaker_docs(self) -> dict[str, object]:
+		"""List files in the local `sagemaker-docs` folder.
+
+		Returns:
+			A dict in the shape: {"count": int, "documents": list[str]}.
+		"""
+
+		docs_dir = Path(__file__).resolve().parents[2] / "sagemaker-docs"
+		if not docs_dir.exists() or not docs_dir.is_dir():
+			return {"count": 0, "documents": []}
+
+		documents = sorted([p.name for p in docs_dir.iterdir() if p.is_file()])
+		return {"count": len(documents), "documents": documents}
 
 	def _get_bedrock_embeddings_client(self):
 		"""Create a Bedrock embeddings client.

@@ -21,3 +21,8 @@ class EmbedTextRequest(BaseModel):
 class EmbedTextResponse(BaseModel):
     dimensions: int
     embedding: list[float]
+
+
+class LocalDocumentsResponse(BaseModel):
+    count: int
+    documents: list[str]
