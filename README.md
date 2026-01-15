@@ -7,7 +7,7 @@ RAG (Retrieval-Augmented Generation) backend that ingests documents from AWS S3 
 - [x] S3 integration
 - [ ] Hybrid search using OpenSearch
 - [x] Tests via Pytest
-- [ ] Swagger documentation
+- [x] Swagger documentation
 - [x] Google ADK agent
 
 ## Google ADK agent
