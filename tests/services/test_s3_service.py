@@ -268,7 +268,7 @@ def test_get_file_content_reads_body_bytes():
     service = _service_with_fake_client(fake)
 
     data = asyncio.run(service.get_file_content(key="docs/a.md"))
-    assert data == b"hello"
+    assert data == "hello"
 
     assert fake.calls[-1] == (
         "get_object",
@@ -281,7 +281,7 @@ def test_get_file_content_returns_empty_bytes_when_body_missing():
     fake.get_object_response = {"Body": None}
     service = _service_with_fake_client(fake)
 
-    assert asyncio.run(service.get_file_content(key="k")) == b""
+    assert asyncio.run(service.get_file_content(key="k")) == ""
 
 
 def test_get_file_content_wraps_validation_errors():

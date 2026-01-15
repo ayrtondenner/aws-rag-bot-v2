@@ -16,7 +16,7 @@ class StubS3Service:
         self.list_files_result: list[FileItem] = [FileItem(key="a.txt")]
         self.list_files_exc: Exception | None = None
 
-        self.get_file_content_result: bytes | str = b"data"
+        self.get_file_content_result: str = "data"
         self.get_file_content_exc: Exception | None = None
 
         self.seen: dict[str, object] = {}
@@ -34,7 +34,7 @@ class StubS3Service:
             raise self.list_files_exc
         return self.list_files_result
 
-    async def get_file_content(self, *, key: str) -> bytes | str:
+    async def get_file_content(self, *, key: str) -> str:
         self.seen["get_file_content.key"] = key
         if self.get_file_content_exc is not None:
             raise self.get_file_content_exc
@@ -111,21 +111,7 @@ def test_s3_list_files_success(client, fastapi_app):
         fastapi_app.dependency_overrides.clear()
 
 
-def test_s3_get_file_content_returns_octet_stream_for_bytes(client, fastapi_app):
-    stub = StubS3Service()
-    stub.get_file_content_result = b"hello"
-
-    fastapi_app.dependency_overrides[get_s3_service] = lambda: stub
-    try:
-        resp = client.get("/s3/file/content?file_name=docs/a.txt")
-        assert resp.status_code == 200
-        assert resp.headers["content-type"].startswith("application/octet-stream")
-        assert resp.content == b"hello"
-    finally:
-        fastapi_app.dependency_overrides.clear()
-
-
-def test_s3_get_file_content_returns_text_plain_for_str(client, fastapi_app):
+def test_s3_get_file_content_returns_json(client, fastapi_app):
     stub = StubS3Service()
     stub.get_file_content_result = "hello"
 
@@ -133,8 +119,8 @@ def test_s3_get_file_content_returns_text_plain_for_str(client, fastapi_app):
     try:
         resp = client.get("/s3/file/content?file_name=docs/a.txt")
         assert resp.status_code == 200
-        assert resp.headers["content-type"].startswith("text/plain")
-        assert resp.text == "hello"
+        assert resp.headers["content-type"].startswith("application/json")
+        assert resp.json() == {"filename": "docs/a.txt", "content": "hello"}
     finally:
         fastapi_app.dependency_overrides.clear()
 

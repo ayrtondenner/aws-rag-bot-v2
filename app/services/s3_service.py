@@ -120,8 +120,8 @@ class S3Service:
             logger.exception("S3 upload_path failed")
             raise S3ServiceError(f"Failed to upload local file to S3 (key={key})") from exc
 
-    async def get_file_content(self, *, key: str) -> bytes:
-        """Return the raw bytes for an object in the configured S3 bucket."""
+    async def get_file_content(self, *, key: str, encoding: str = "utf-8") -> str:
+        """Return decoded text for an object in the configured S3 bucket."""
 
         try:
             if not key:
@@ -132,8 +132,21 @@ class S3Service:
                 resp = await s3.get_object(Bucket=self._config.bucket_name, Key=key)
                 body = resp.get("Body")
                 if body is None:
-                    return b""
-                return await body.read()
+                    return ""
+                blob = await body.read()
+                return blob.decode(encoding, errors="replace")
+        except ClientError as exc:
+            code = (exc.response.get("Error") or {}).get("Code")
+            status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            status_enum = HTTPStatus(status) if isinstance(status, int) else None
+
+            if status_enum == HTTPStatus.NOT_FOUND or code in {"NoSuchKey", "NotFound"}:
+                raise FileNotFoundError(key) from exc
+            if status_enum == HTTPStatus.FORBIDDEN or code in {"AccessDenied"}:
+                raise S3ServiceError(f"Access denied fetching S3 object: {key}") from exc
+
+            logger.exception("S3 get_file_content failed")
+            raise S3ServiceError(f"Failed to fetch file content from S3 (key={key})") from exc
         except Exception as exc:
             logger.exception("S3 get_file_content failed")
             raise S3ServiceError(f"Failed to fetch file content from S3 (key={key})") from exc

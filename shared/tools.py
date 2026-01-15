@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 from typing import Any, Optional
 
 from google.adk.tools.function_tool import FunctionTool
@@ -9,7 +8,7 @@ from google.adk.tools.transfer_to_agent_tool import transfer_to_agent
 from google.adk.tools.tool_context import ToolContext
 
 from app.models.document import LocalDocumentContentResponse, LocalDocumentsResponse
-from app.models.s3 import BucketExistsResponse, FileListResponse
+from app.models.s3 import BucketExistsResponse, FileListResponse, S3FileContentResponse
 from app.services.config import S3Config
 from app.services.dependencies import get_document_service as get_document_service_dependency
 from app.services.dependencies import get_s3_service as get_s3_service_dependency
@@ -92,47 +91,26 @@ async def s3_list_bucket_files(
 
 @mcp.tool(
     name="s3_get_file_content",
-    description="Fetch the content of an S3 object (returns base64; optionally decoded text).",
+    description="Fetch the text content of an S3 object.",
 )
 async def s3_get_file_content(
     *,
     key: str,
-    bucket_name: str = DEFAULT_SAGEMAKER_DOCS_BUCKET_NAME,
-    as_text: bool = False,
     encoding: str = "utf-8",
 ) -> dict[str, Any]:
     """Fetch the content of an S3 object.
 
     Args:
         key: The object key to fetch.
-        bucket_name: Bucket name. If omitted, defaults to the SageMaker docs bucket.
-        as_text: If true, also attempts to decode the content as text.
-        encoding: Text decoding encoding used when `as_text` is true.
+        encoding: Text decoding encoding.
 
     Returns:
-        JSON with:
-          - bucket_name
-          - key
-          - content_base64
-          - content_text (only when as_text=true and decoding succeeds)
+        JSON with {filename, content}.
     """
 
     s3 = _get_s3_service()
-    blob = await s3.get_file_content(key=key)
-    result: dict[str, Any] = {
-        "bucket_name": bucket_name,
-        "key": key,
-        "content_base64": base64.b64encode(blob).decode("ascii"),
-    }
-
-    if as_text:
-        try:
-            result["content_text"] = blob.decode(encoding)
-        except Exception:
-            # Leave content_text unset if it cannot be decoded.
-            pass
-
-    return result
+    content = await s3.get_file_content(key=key, encoding=encoding)
+    return S3FileContentResponse(filename=key, content=content).model_dump()
 
 @mcp.tool(
     name="list_local_sagemaker_docs",
