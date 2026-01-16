@@ -9,6 +9,7 @@ RAG (Retrieval-Augmented Generation) backend that ingests documents from AWS S3 
 - [x] Tests via Pytest
 - [x] Swagger documentation
 - [x] Google ADK agent
+- [x] MCP server
 
 ## Google ADK agent
 

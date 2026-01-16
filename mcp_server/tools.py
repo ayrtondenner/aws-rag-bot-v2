@@ -9,6 +9,7 @@ import shared.tools as shared_tools
 
 from fastmcp import FastMCP
 
+# TODO: rethink if mcp object should be in this file
 mcp = FastMCP(
     name="aws-rag-bot-mcp",
     instructions=(
@@ -18,6 +19,8 @@ mcp = FastMCP(
     ),
 )
 
+# TODO: think of tools examples, right now we only have resources
+# Maybe tools/functions to upload files on S3/folder on the fly?
 @mcp.resource(
     name="s3_bucket_exists",
     description="Check whether an S3 bucket exists and is accessible.",

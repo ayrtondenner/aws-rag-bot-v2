@@ -76,7 +76,7 @@ def _service_with_fake_client(fake: FakeS3Client) -> S3Service:
     service._client = lambda: fake  # type: ignore[method-assign]
     return service
 
-
+# TODO: implement dependency injection to avoid needing to test S3Service directly
 def test_bucket_exists_raises_on_blank_name():
     service = S3Service(S3Config(bucket_name="unit-test-bucket"))
     with pytest.raises(ValueError):
