@@ -18,9 +18,10 @@ mcp = FastMCP(
     ),
 )
 
-@mcp.tool(
+@mcp.resource(
     name="s3_bucket_exists",
     description="Check whether an S3 bucket exists and is accessible.",
+    uri="s3://bucket_exists/{?bucket_name}",
 )
 async def s3_bucket_exists(*,
     bucket_name: Annotated[
@@ -42,15 +43,17 @@ async def s3_bucket_exists(*,
 
     return await shared_tools.s3_bucket_exists(bucket_name=bucket_name)
 
-@mcp.tool(
+@mcp.resource(
     name="s3_list_bucket_files",
     description="List files (object keys) in the configured S3 bucket.",
+    uri="s3://list_bucket_files/{?prefix,max_keys}",
+    annotations={"prefix": "Optional key prefix filter.", "max_keys": "Max number of keys to return (S3 ListObjectsV2 MaxKeys)."},
 )
 async def s3_list_bucket_files(
     *,
     prefix: Annotated[Optional[str], Field(default=None, description="Optional key prefix filter.")] = None,
     max_keys: Annotated[
-        int,
+        Optional[int],
         Field(default=1000, ge=1, le=1000, description="Max number of keys to return (S3 ListObjectsV2 MaxKeys)."),
     ] = 1000,
 ) -> FileListResponse:
@@ -66,9 +69,10 @@ async def s3_list_bucket_files(
 
     return await shared_tools.s3_list_bucket_files(prefix=prefix, max_keys=max_keys)
 
-@mcp.tool(
+@mcp.resource(
     name="s3_get_file_content",
     description="Fetch the text content of an S3 object.",
+    uri="s3://get_file_content/{key}{?encoding}",
 )
 async def s3_get_file_content(
     *,
@@ -93,9 +97,10 @@ async def s3_get_file_content(
 
     return await shared_tools.s3_get_file_content(key=key, encoding=encoding)
 
-@mcp.tool(
+@mcp.resource(
     name="list_local_sagemaker_docs",
     description="List files in the local sagemaker-docs folder.",
+    uri="local://sagemaker-docs/",
 )
 async def list_local_sagemaker_docs() -> LocalDocumentsResponse:
     """List files in the local `sagemaker-docs` folder.
@@ -107,9 +112,10 @@ async def list_local_sagemaker_docs() -> LocalDocumentsResponse:
     return await shared_tools.list_local_sagemaker_docs()
 
 
-@mcp.tool(
+@mcp.resource(
     name="get_local_sagemaker_doc_content",
     description="Get the text content of a local file in the sagemaker-docs folder by filename.",
+    uri="local://sagemaker-docs/{filename}",
 )
 async def get_local_sagemaker_doc_content(
     *,

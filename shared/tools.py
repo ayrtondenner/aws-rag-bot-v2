@@ -54,7 +54,7 @@ async def s3_bucket_exists(*, bucket_name: str = DEFAULT_SAGEMAKER_DOCS_BUCKET_N
 async def s3_list_bucket_files(
     *,
     prefix: Optional[str] = None,
-    max_keys: int = 1000,
+    max_keys: Optional[int] = 1000,
 ) -> FileListResponse:
     """List files (object keys) in an S3 bucket.
 

@@ -55,14 +55,14 @@ class S3Service:
             if status_enum == HTTPStatus.NOT_FOUND or code in {"NoSuchBucket", "NotFound"}:
                 return False
             if status_enum == HTTPStatus.FORBIDDEN or code in {"AccessDenied"}:
-                raise S3ServiceError(f"Access denied checking S3 bucket: {bucket_name}") from exc
+                return False
             logger.exception("S3 bucket_exists failed")
             raise S3ServiceError(f"Failed to check if S3 bucket exists: {bucket_name}") from exc
         except Exception as exc:
             logger.exception("S3 bucket_exists failed")
             raise S3ServiceError(f"Failed to check if S3 bucket exists: {bucket_name}") from exc
 
-    async def list_files(self, *, prefix: Optional[str] = None, max_keys: int = 1000) -> list[FileItem]:
+    async def list_files(self, *, prefix: Optional[str] = None, max_keys: Optional[int] = 1000) -> list[FileItem]:
         try:
             kwargs: dict[str, Any] = {"Bucket": self._config.bucket_name, "MaxKeys": max_keys}
             if prefix:
