@@ -35,3 +35,8 @@ class BucketFileCountResponse(BaseModel):
     bucket_name: str
     prefix: str | None = None
     count: int
+
+
+class S3FileContentResponse(BaseModel):
+    filename: str
+    content: str

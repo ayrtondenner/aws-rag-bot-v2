@@ -1,22 +1,21 @@
 from __future__ import annotations
 
-import base64
-from typing import Any, Optional
+from typing import Optional
 
 from google.adk.tools.function_tool import FunctionTool
 from google.adk.agents.llm_agent import ToolUnion
 from google.adk.tools.transfer_to_agent_tool import transfer_to_agent
 from google.adk.tools.tool_context import ToolContext
 
-from app.models.document import LocalDocumentsResponse
-from app.models.s3 import BucketExistsResponse, FileListResponse
-from app.services.config import S3Config
+from app.models.document import LocalDocumentContentResponse, LocalDocumentsResponse
+from app.models.s3 import BucketExistsResponse, FileListResponse, S3FileContentResponse
 from app.services.dependencies import get_document_service as get_document_service_dependency
 from app.services.dependencies import get_s3_service as get_s3_service_dependency
 from app.services.document_service import DocumentService
 from app.services.s3_service import S3Service
 
-DEFAULT_SAGEMAKER_DOCS_BUCKET_NAME = S3Config.from_env().bucket_name.strip()
+# TODO: import this from S3 config instead
+DEFAULT_SAGEMAKER_DOCS_BUCKET_NAME = "senior-sagemaker-assessment-bucket"
 
 def _get_s3_service() -> S3Service:
     if not DEFAULT_SAGEMAKER_DOCS_BUCKET_NAME:
@@ -30,8 +29,15 @@ def _get_document_service() -> DocumentService:
     # Use the same constructor path as the FastAPI dependency.
     return get_document_service_dependency()
 
+def transfer_to_root(tool_context: ToolContext) -> None:
+    """Transfer control back to the root agent.
 
-async def s3_bucket_exists(*, bucket_name: str = DEFAULT_SAGEMAKER_DOCS_BUCKET_NAME) -> dict[str, Any]:
+    Use this when the user's request is not about the sub-agent responsibility.
+    """
+
+    transfer_to_agent("root_agent", tool_context)
+
+async def s3_bucket_exists(*, bucket_name: str = DEFAULT_SAGEMAKER_DOCS_BUCKET_NAME) -> BucketExistsResponse:
     """Check whether an S3 bucket exists and is accessible.
 
     Args:
@@ -43,14 +49,13 @@ async def s3_bucket_exists(*, bucket_name: str = DEFAULT_SAGEMAKER_DOCS_BUCKET_N
 
     s3 = _get_s3_service()
     exists = await s3.bucket_exists(bucket_name=bucket_name)
-    return BucketExistsResponse(bucket_name=bucket_name, exists=exists).model_dump()
-
+    return BucketExistsResponse(bucket_name=bucket_name, exists=exists)
 
 async def s3_list_bucket_files(
     *,
     prefix: Optional[str] = None,
-    max_keys: int = 1000,
-) -> dict[str, Any]:
+    max_keys: Optional[int] = 1000,
+) -> FileListResponse:
     """List files (object keys) in an S3 bucket.
 
     Args:
@@ -63,60 +68,28 @@ async def s3_list_bucket_files(
 
     s3 = _get_s3_service()
     files = await s3.list_files(prefix=prefix, max_keys=max_keys)
-    return FileListResponse(count=len(files), files=files).model_dump()
-
+    return FileListResponse(count=len(files), files=files)
 
 async def s3_get_file_content(
     *,
     key: str,
-    bucket_name: str = DEFAULT_SAGEMAKER_DOCS_BUCKET_NAME,
-    as_text: bool = False,
     encoding: str = "utf-8",
-) -> dict[str, Any]:
+) -> S3FileContentResponse:
     """Fetch the content of an S3 object.
 
     Args:
         key: The object key to fetch.
-        bucket_name: Bucket name. If omitted, defaults to the SageMaker docs bucket.
-        as_text: If true, also attempts to decode the content as text.
-        encoding: Text decoding encoding used when `as_text` is true.
+        encoding: Text decoding encoding.
 
     Returns:
-        JSON with:
-          - bucket_name
-          - key
-          - content_base64
-          - content_text (only when as_text=true and decoding succeeds)
+        JSON with {filename, content}.
     """
 
     s3 = _get_s3_service()
-    blob = await s3.get_file_content(key=key)
-    result: dict[str, Any] = {
-        "bucket_name": bucket_name,
-        "key": key,
-        "content_base64": base64.b64encode(blob).decode("ascii"),
-    }
+    content = await s3.get_file_content(key=key, encoding=encoding)
+    return S3FileContentResponse(filename=key, content=content)
 
-    if as_text:
-        try:
-            result["content_text"] = blob.decode(encoding)
-        except Exception:
-            # Leave content_text unset if it cannot be decoded.
-            pass
-
-    return result
-
-
-def s3_transfer_to_root(tool_context: ToolContext) -> None:
-    """Transfer control back to the root agent.
-
-    Use this when the user's request is not about S3.
-    """
-
-    transfer_to_agent("root_agent", tool_context)
-
-
-async def list_local_sagemaker_docs() -> dict[str, Any]:
+async def list_local_sagemaker_docs() -> LocalDocumentsResponse:
     """List files in the local `sagemaker-docs` folder.
 
     Returns:
@@ -125,16 +98,18 @@ async def list_local_sagemaker_docs() -> dict[str, Any]:
 
     documents = _get_document_service()
     result = documents.list_local_sagemaker_docs()
-    return LocalDocumentsResponse.model_validate(result).model_dump()
+    return LocalDocumentsResponse.model_validate(result)
 
+async def get_local_sagemaker_doc_content(*, filename: str) -> LocalDocumentContentResponse:
+    """Read a local doc file content.
 
-def document_transfer_to_root(tool_context: ToolContext) -> None:
-    """Transfer control back to the root agent.
-
-    Use this when the user's request is not about local documents.
+    Returns:
+        JSON with {filename, content}.
     """
 
-    transfer_to_agent("root_agent", tool_context)
+    documents = _get_document_service()
+    content = documents.get_local_sagemaker_doc_content(filename=filename)
+    return LocalDocumentContentResponse(filename=filename, content=content)
 
 
 def build_s3_tools() -> list[ToolUnion]:
@@ -142,13 +117,13 @@ def build_s3_tools() -> list[ToolUnion]:
         FunctionTool(s3_bucket_exists),
         FunctionTool(s3_list_bucket_files),
         FunctionTool(s3_get_file_content),
-        FunctionTool(s3_transfer_to_root),
+        FunctionTool(transfer_to_root),
     ]
 
 
 def build_document_tools() -> list[ToolUnion]:
     return [
         FunctionTool(list_local_sagemaker_docs),
-        FunctionTool(document_transfer_to_root),
+        FunctionTool(get_local_sagemaker_doc_content),
+        FunctionTool(transfer_to_root),
     ]
-

@@ -26,3 +26,8 @@ class EmbedTextResponse(BaseModel):
 class LocalDocumentsResponse(BaseModel):
     count: int
     documents: list[str]
+
+
+class LocalDocumentContentResponse(BaseModel):
+    filename: str
+    content: str

@@ -9,11 +9,11 @@ from app.models.s3 import (
     BucketExistsResponse,
     BucketFileCountResponse,
     FileListResponse,
+    S3FileContentResponse,
 )
 from app.services.dependencies import get_s3_service
 from app.services.s3_service import S3Service
 from fastapi import HTTPException
-from fastapi.responses import Response
 
 from starlette import status
 
@@ -122,38 +122,11 @@ async def list_files(
     responses={
         200: {
             "content": {
-                "text/plain": {
-                    "example": """# Using the SageMaker Training and Inference Toolkits<a name="amazon-sagemaker-toolkits"></a>
-
-The [SageMaker Training](https://github.com/aws/sagemaker-training-toolkit) and [SageMaker Inference](https://github.com/aws/sagemaker-inference-toolkit) toolkits implement the functionality that you need to adapt your containers to run scripts, train algorithms, and deploy models on SageMaker. When installed, the library defines the following for users:
-+ The locations for storing code and other resources.
-+ The entry point that contains the code to run when the container is started. Your Dockerfile must copy the code that needs to be run into the location expected by a container that is compatible with SageMaker.
-+ Other information that a container needs to manage deployments for training and inference.
-
-## SageMaker Toolkits Containers Structure<a name="sagemaker-toolkits-structure"></a>
-
-When SageMaker trains a model, it creates the following file folder structure in the container's `/opt/ml` directory.
-
-```
-/opt/ml
-├── input
-│   ├── config
-│   │   ├── hyperparameters.json
-│   │   └── resourceConfig.json
-│   └── data
-│       └── <channel_name>
-│           └── <input data>
-├── model
-│
-├── code
-│
-├── output
-│
-└── failure
-```""",
-                },
-                "application/octet-stream": {
-                    "schema": {"type": "string", "format": "binary"}
+                "application/json": {
+                    "example": {
+                        "filename": "sagemaker-docs/sagemaker-algo-common-data-formats.md",
+                        "content": "# Common Data Formats for Built-in Algorithms<a name=\"sagemaker-algo-common-data-formats\"></a>\n\nThe following topics explain the data formats for the algorithms provided by Amazon SageMaker.\n\n**Topics**\n+ [Common Data Formats for Training](cdf-training.md)\n+ [Common Data Formats for Inference](cdf-inference.md)\n",
+                    }
                 },
             }
         },
@@ -163,10 +136,10 @@ When SageMaker trains a model, it creates the following file folder structure in
 )
 async def get_file_content(
     file_name: str = Query(
-        ..., min_length=1, examples=["sagemaker-docs/amazon-sagemaker-toolkits.md"]
+        ..., min_length=1, examples=["sagemaker-docs/sagemaker-algo-common-data-formats.md"]
     ),
     s3: S3Service = Depends(get_s3_service),
-):
+)-> S3FileContentResponse:
     """Get the raw content of an object in the configured S3 bucket by file name (key)."""
 
     try:
@@ -176,7 +149,4 @@ async def get_file_content(
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to fetch file content") from exc
 
-    if isinstance(content, str):
-        return Response(content=content, media_type="text/plain; charset=utf-8")
-
-    return Response(content=content, media_type="application/octet-stream")
+    return S3FileContentResponse(filename=file_name, content=content)

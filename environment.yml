@@ -14,7 +14,11 @@ dependencies:
   - google-adk
   - httpx
   - pytest
+  - fastmcp
   - pip
   - pip:
       - litellm
+      - google-adk
+      - google-adk[eval]
+      - google-genai
 prefix: ./.conda

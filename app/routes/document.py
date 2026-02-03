@@ -7,6 +7,7 @@ from starlette import status
 from app.models.document import (
 	EmbedTextRequest,
 	EmbedTextResponse,
+	LocalDocumentContentResponse,
 	LocalDocumentsResponse,
 	SplitTextRequest,
 	SplitTextResponse,
@@ -58,12 +59,71 @@ async def chunk_text(
 	return SplitTextResponse(count=len(chunks), chunk_size=chunk_size, chunk_overlap=chunk_overlap, chunks=chunks)
 
 
-@router.get("/local-docs", response_model=LocalDocumentsResponse)
+@router.get(
+	"/local-docs",
+	response_model=LocalDocumentsResponse,
+	responses={
+		200: {
+			"content": {
+				"application/json": {
+					"example": {
+						"count": 3,
+						"documents": [
+							"amazon-sagemaker-toolkits.md",
+							"sagemaker-algo-common-data-formats.md",
+							"sagemaker-algo-docker-registry-paths.md",
+						],
+					}
+				}
+			}
+		}
+	},
+)
 async def list_local_docs(
 	documents: DocumentService = Depends(get_document_service),
 ) -> LocalDocumentsResponse:
 	result = documents.list_local_sagemaker_docs()
 	return LocalDocumentsResponse.model_validate(result)
+
+
+@router.get(
+	"/local-docs/content",
+	response_model=LocalDocumentContentResponse,
+	responses={
+		200: {
+			"content": {
+				"application/json": {
+					"example": {
+						"filename": "sagemaker-algo-common-data-formats.md",
+						"content": "# Common Data Formats for Built-in Algorithms<a name=\"sagemaker-algo-common-data-formats\"></a>\n\nThe following topics explain the data formats for the algorithms provided by Amazon SageMaker.\n\n**Topics**\n+ [Common Data Formats for Training](cdf-training.md)\n+ [Common Data Formats for Inference](cdf-inference.md)\n",
+					}
+				}
+			}
+		},
+		400: {"description": "Invalid filename"},
+		404: {"description": "Document not found"},
+		502: {"description": "Document service error"},
+	},
+)
+async def get_local_doc_content(
+	filename: str = Query(
+		...,
+		min_length=1,
+		description="Filename in local sagemaker-docs folder",
+		examples=["sagemaker-algo-common-data-formats.md"],
+	),
+	documents: DocumentService = Depends(get_document_service),
+) -> LocalDocumentContentResponse:
+	try:
+		content = documents.get_local_sagemaker_doc_content(filename=filename)
+	except ValueError as exc:
+		raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+	except FileNotFoundError as exc:
+		raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found") from exc
+	except DocumentServiceError as exc:
+		raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+	return LocalDocumentContentResponse(filename=filename, content=content)
 
 
 @router.post("/embed", response_model=EmbedTextResponse)
