@@ -1,6 +1,6 @@
 # Plan: OpenSearch Hybrid Search Service
 
-**TL;DR:** Build a complete OpenSearch hybrid search layer (BM25 + neural/kNN) following the project's existing architecture patterns: `Config → Service → Dependencies → Routes → Models → Tests → Shared Tools → Agent → MCP`. Documents from `sagemaker-docs/` are chunked via `DocumentService.chunk_text()` and indexed as one-document-per-chunk. The ML connector (Titan Embed v2, 1024 dims) auto-generates vectors on ingest. A dashboard setup script handles the full server-side setup (connector, model, pipelines, index creation). Since the model search returned 0 hits, the script must include connector + model registration.
+**TL;DR:** Build a complete OpenSearch hybrid search layer (BM25 + neural/kNN) following the project's existing architecture patterns: `Config → Models → Service → Dependencies → Routes → Tests → Shared Tools → Agent → MCP`. Documents from `sagemaker-docs/` are chunked via `DocumentService.chunk_text()` and indexed as one-document-per-chunk. The ML connector (Titan Embed v2, 1024 dims) auto-generates vectors on ingest. A dashboard setup script handles the full server-side setup (connector, model, pipelines, index creation). Since the model search returned 0 hits, the script must include connector + model registration.
 
 ## Steps
 
@@ -140,6 +140,7 @@ Update `README.md`.
 - Update the agent section to describe `opensearch_agent`.
 - Update MCP tools list.
 - Add a "Why `opensearch-py`?" note explaining: `aioboto3`/`boto3` only handles control-plane (collection management), not data-plane (`_search`, `_index`); `langchain-community`'s `OpenSearchVectorSearch` doesn't support ML-connector auto-embedding and is vector-only (no native hybrid); `opensearch-py` provides direct data-plane HTTP access with SigV4 auth.
+- Regarding `opensearch-py` sync vs async client: the async client has limited serverless support and is less stable with SigV4 auth. The sync client wrapped in `asyncio.to_thread()` is the most reliable approach for FastAPI routes while still maintaining responsiveness.
 - Replace old references to "two OpenSearch collections (search + vector)" with the single `ragbot-v2-collection`.
 
 ### 13. Wire Up in main.py
