@@ -69,7 +69,7 @@ When adding a new capability (e.g., a new external integration, a new domain), f
 **Wire into the app** in `main.py`:
   1. Import the router: `from app.routes.<domain> import router as <domain>_router`.
   2. Register it: `app.include_router(<domain>_router)`.
-  3. Add a custom exception handler mapping `<Domain>ServiceError` → HTTP 502.
+  3. Add a custom exception handler in `app/error_handlers.py` mapping `<Domain>ServiceError` → HTTP 502, and register it via `register_error_handlers()`.
 
 **Pattern reference:** `app/routes/s3.py`, `app/routes/document.py`, and how they're wired in `main.py`.
 
@@ -106,7 +106,7 @@ Tests follow two distinct patterns depending on the layer being tested. Write te
   - Always clean up overrides in a `finally` block or fixture teardown.
 - Update `tests/conftest.py`:
   - Add the new router to the test `FastAPI` app.
-  - Add the new `<Domain>ServiceError` exception handler.
+  - Verify the new `<Domain>ServiceError` exception handler is registered in `app/error_handlers.py`.
 - Test cases should cover:
   - Success responses (correct status code and JSON body).
   - Service errors mapped to 502.

@@ -47,6 +47,7 @@ To auto-fix fixable issues:
 │   ├── copilot-instructions.md       # General Copilot instructions (this file)
 │   └── copilot-code-instructions.md  # Code generation workflow & patterns
 ├── app/
+│   ├── error_handlers.py  # Centralised exception-to-HTTP-response handlers (register_error_handlers())
 │   ├── models/            # Pydantic request/response models
 │   ├── routes/            # FastAPI route modules (one per domain)
 │   ├── services/
@@ -80,7 +81,7 @@ To auto-fix fixable issues:
 ├── scripts/               # Utility/smoke-test scripts
 ├── docs/
 │   └── opensearch_index_setup.md     # Dashboard Dev Tools commands for one-time OpenSearch setup
-├── main.py                # FastAPI app entry point (lifespan, routers, exception handlers)
+├── main.py                # FastAPI app entry point (lifespan, routers)
 └── environment.yml        # Conda environment definition
 ```
 
@@ -90,7 +91,7 @@ To auto-fix fixable issues:
 - **Frozen dataclasses** for configs and settings (immutability).
 - **Pydantic `BaseModel`** for all request/response models.
 - **Async-first** in services/routes. Wrap sync clients with `asyncio.to_thread()` when necessary.
-- **Custom error classes** inheriting `RuntimeError` per service, mapped to HTTP 502 in `main.py`.
+- **Custom error classes** inheriting `RuntimeError` per service, mapped to HTTP 502 in `app/error_handlers.py`.
 - **Dependency injection** via FastAPI `Depends()` — never instantiate services directly in routes.
 - **Private `_client()` factory** in services for testability (fake/stub replacement in tests).
 - **`logging.getLogger(__name__)`** for all log statements.
