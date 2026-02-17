@@ -208,3 +208,16 @@ assert fake.calls[-1][0] == "get_object"
 ```
 
 Full reference tests are in `tests/services/test_s3_service.py`.
+
+## Copilot Instructions
+
+This project uses [VS Code custom instructions files](https://aka.ms/vscode-ghcp-custom-instructions) to guide GitHub Copilot during development. The instruction files are git-tracked, so every developer who clones the repo gets them automatically.
+
+| File | Scope | Description |
+| --- | --- | --- |
+| `.github/copilot-instructions.md` | General (always included) | Project overview, tech stack, coding conventions, env vars |
+| `.github/copilot-code-instructions.md` | Code generation | Step-by-step workflow for implementing new service layers (Config → Models → Service → Dependencies → Routes → Tests → Shared Tools → Agent → MCP) |
+
+These files are automatically picked up by VS Code — no `settings.json` configuration required.
+
+For more information on how custom instruction files work, see the [VS Code Copilot documentation](https://code.visualstudio.com/docs/copilot/copilot-customization).

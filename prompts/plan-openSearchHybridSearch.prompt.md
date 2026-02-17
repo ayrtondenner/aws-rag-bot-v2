@@ -21,7 +21,7 @@ New file `app/services/opensearch_service.py`.
 - `list_indexed_documents() -> list[str]` — Returns a deduplicated, sorted list of all `filename` values currently indexed. Uses a `terms` aggregation on `filename` (keyword sub-field).
 - `index_document(filename: str, content: str, chunk_size: int, chunk_overlap: int) -> IndexDocumentResponse` — **Skips indexing if `document_exists(filename)` returns `True`** (returns response with `chunk_count=0`, `doc_ids=[]`, `skipped=True`). Otherwise calls `DocumentService.chunk_text()` on `content`, then indexes each chunk as a separate doc. Returns list of doc IDs. Each indexed document has fields: `filename`, `content` (chunk text), and `content_embedding` (auto-filled by ingest pipeline).
 - `bulk_index_documents(documents: list[IndexDocumentRequest]) -> BulkIndexResponse` — Accepts a list. **For each document, checks `document_exists()` first and skips already-indexed files.** Chunks remaining documents and uses OpenSearch `_bulk` API for efficiency. This is the "parallel" indexing the user requested. Response includes which files were skipped vs indexed.
-- `search(query: str, size: int, search_type: hybrid|text|vector) -> SearchResponse` — Dispatches to the appropriate query body: hybrid uses both `match` (BM25 on `content`) + `neural` (on `content_embedding`) via the search pipeline with normalization; text uses `multi_match` on `filename` + `content`; vector uses `neural` only.
+- `search(query: str, size: int = 10, search_type: Literal["hybrid", "text", "vector"] = "hybrid") -> SearchResponse` — Dispatches to the appropriate query body. **`hybrid` is the default search type.** Hybrid uses both `match` (BM25 on `content`) + `neural` (on `content_embedding`) via the search pipeline with normalization; text uses `multi_match` on `filename` + `content`; vector uses `neural` only.
 - `delete_document(doc_id: str) -> bool`
 - `delete_documents_by_filename(filename: str) -> int` — Deletes all chunks for a given source file (for re-indexing).
 - `get_index_stats() -> IndexStatsResponse` — Document count, index health.
@@ -57,7 +57,7 @@ New file `app/routes/opensearch.py`, prefix `/opensearch`, tag `opensearch`.
 - `POST /opensearch/index` — Index a single document (body: `IndexDocumentRequest` + query params `chunk_size`, `chunk_overlap`). **Skips if filename already indexed** (returns `skipped=True`). Returns `IndexDocumentResponse`. Swagger examples included.
 - `POST /opensearch/bulk-index` — Bulk index multiple documents (body: `BulkIndexRequest`). **Skips already-indexed filenames.** Returns `BulkIndexResponse` (includes `indexed_count` and `skipped_count`).
 - `POST /opensearch/index-local-docs` — Convenience: reads ALL files from local `sagemaker-docs/` folder, bulk-indexes them. **Skips already-indexed files.** Query params for `chunk_size`, `chunk_overlap`. Good for initial data load and safe to re-run.
-- `POST /opensearch/search` — Hybrid search (body: `SearchRequest`). Returns `SearchResponse`.
+- `POST /opensearch/search` — Search documents (body: `SearchRequest`). **Defaults to hybrid search** when `search_type` is omitted. Returns `SearchResponse`.
 - `GET /opensearch/index/stats` — Returns `IndexStatsResponse`.
 - `GET /opensearch/documents` — List all indexed document filenames. Returns `IndexedDocumentsResponse`.
 - `GET /opensearch/document/exists` — Check if a document filename is already indexed. Query param `filename` (required). Returns `DocumentExistsResponse`.
@@ -85,7 +85,7 @@ New file `tests/routes/test_opensearch_routes.py`.
 
 Update `shared/tools.py`.
 
-- `opensearch_search(query, size, search_type)` → calls `OpenSearchService.search()`
+- `opensearch_search(query, size, search_type="hybrid")` → calls `OpenSearchService.search()`. **Defaults to hybrid search** when `search_type` is not specified.
 - `opensearch_index_document(filename, content)` → calls `OpenSearchService.index_document()` (auto-skips if already indexed)
 - `opensearch_document_exists(filename)` → calls `OpenSearchService.document_exists()`
 - `opensearch_list_indexed_documents()` → calls `OpenSearchService.list_indexed_documents()`
