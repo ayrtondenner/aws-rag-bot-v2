@@ -122,9 +122,10 @@ Tests follow two distinct patterns depending on the layer being tested. Write te
 
 ### Step 7 — Shared Tools (ADK)
 
-**Location:** `shared/tools.py`
+**Location:** `shared/<domain>_tools.py` (new file per domain, e.g., `shared/s3_tools.py`)
 
-- Add async tool functions that wrap the service methods (e.g., `opensearch_search(...)`, `opensearch_index_document(...)`).
+- Cross-cutting helpers (`transfer_to_root`, `DEFAULT_SAGEMAKER_DOCS_BUCKET_NAME`) live in `shared/__init__.py`.
+- Add async tool functions that wrap the service methods (e.g., `opensearch_query(...)`, `opensearch_index_document(...)`).
 - Add a private helper `_get_<domain>_service()` following the `_get_s3_service()` pattern.
 - Add a `build_<domain>_tools() -> list[ToolUnion]` function that returns:
   - `FunctionTool(...)` for each tool function.
@@ -132,7 +133,7 @@ Tests follow two distinct patterns depending on the layer being tested. Write te
 - Tool functions should have clear docstrings (ADK uses these for the LLM's tool descriptions).
 - Return the same Pydantic response models used by routes for consistency.
 
-**Pattern reference:** `shared/tools.py` (`build_s3_tools()`, `build_document_tools()`).
+**Pattern reference:** `shared/s3_tools.py` (`build_s3_tools()`), `shared/document_tools.py` (`build_document_tools()`).
 
 ### Step 8 — Agent (ADK)
 
@@ -142,7 +143,7 @@ Tests follow two distinct patterns depending on the layer being tested. Write te
 - The agent should have:
   - A clear `description` (used by the root agent for delegation).
   - An `instruction` (system prompt telling the LLM its role and when to transfer back).
-  - `tools=build_<domain>_tools()` from `shared/tools.py`.
+  - `tools=build_<domain>_tools()` from `shared/<domain>_tools.py`.
 - Register the new agent as a sub-agent of `root_agent`:
   - Add it to the `sub_agents=[...]` list.
   - Update the root agent's `instruction` string to mention the new sub-agent and when to delegate to it.
@@ -151,17 +152,20 @@ Tests follow two distinct patterns depending on the layer being tested. Write te
 
 ### Step 9 — MCP Tools
 
-**Location:** `mcp_server/tools.py`
+**Location:** `mcp_server/<domain>_tools.py` (new file per domain, e.g., `mcp_server/s3_tools.py`)
 
-- Add MCP resource (or tool) wrappers that delegate to the corresponding `shared.tools` functions.
+The `FastMCP` instance lives in `mcp_server/__init__.py`. Each domain tool module imports it and registers resources with `@mcp.resource(...)` decorators. `mcp_server/main.py` performs side-effect imports of all tool modules to ensure resources are registered before the server starts.
+
+- Add MCP resource (or tool) wrappers that delegate to the corresponding `shared.<domain>_tools` functions.
 - Use `@mcp.resource(...)` with:
   - `name` — snake_case identifier.
   - `description` — matches the shared tool's docstring.
   - `uri` — follow existing URI scheme patterns (e.g., `s3://...`, `local://...`, `opensearch://...`).
 - Use `Annotated[<type>, Field(...)]` for parameter metadata.
 - Return the same Pydantic response models as the shared tools.
+- After creating a new tool module, add a side-effect import in `mcp_server/main.py` (e.g., `import mcp_server.<domain>_tools  # noqa: F401`).
 
-**Pattern reference:** `mcp_server/tools.py` (existing S3 and local-doc MCP resources).
+**Pattern reference:** `mcp_server/s3_tools.py`, `mcp_server/document_tools.py`, `mcp_server/opensearch_tools.py`.
 
 ---
 

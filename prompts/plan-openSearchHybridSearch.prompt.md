@@ -83,9 +83,9 @@ New file `tests/routes/test_opensearch_routes.py`.
 
 ### 8. Shared Tools
 
-Update `shared/tools.py`.
+New file `shared/opensearch_tools.py`.
 
-- `opensearch_search(query, size, search_type="hybrid")` → calls `OpenSearchService.search()`. **Defaults to hybrid search** when `search_type` is not specified.
+- `opensearch_query(query, size, search_type="hybrid")` → calls `OpenSearchService.search()`. **Defaults to hybrid search** when `search_type` is not specified.
 - `opensearch_index_document(filename, content)` → calls `OpenSearchService.index_document()` (auto-skips if already indexed)
 - `opensearch_document_exists(filename)` → calls `OpenSearchService.document_exists()`
 - `opensearch_list_indexed_documents()` → calls `OpenSearchService.list_indexed_documents()`
@@ -103,9 +103,9 @@ Update `agent/agent_factory.py`.
 
 ### 10. MCP Tools
 
-Update `mcp_server/tools.py`.
+New file `mcp_server/opensearch_tools.py`.
 
-- Add `opensearch_search`, `opensearch_index_document`, `opensearch_document_exists`, `opensearch_list_indexed_documents`, `opensearch_get_index_stats` as MCP resources, wrapping `shared_tools` functions. Follow the existing `s3_*` resource pattern.
+- Add `opensearch_query`, `opensearch_index_document`, `opensearch_document_exists`, `opensearch_list_indexed_documents`, `opensearch_get_index_stats` as MCP resources, wrapping `shared_tools` functions. Follow the existing `s3_*` resource pattern.
 
 ### 11. Dashboard Setup Script
 

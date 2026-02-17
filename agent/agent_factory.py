@@ -4,7 +4,9 @@ from google.adk.agents import Agent
 from google.adk.models.lite_llm import LiteLlm
 
 from .settings import Settings
-from shared.tools import build_document_tools, build_opensearch_tools, build_s3_tools
+from shared.s3_tools import build_s3_tools
+from shared.document_tools import build_document_tools
+from shared.opensearch_tools import build_opensearch_tools
 
 
 def build_root_agent(settings: Settings) -> Agent:
@@ -89,7 +91,7 @@ def build_opensearch_agent(settings: Settings) -> Agent:
             "You are the OpenSearch agent. You help the user search and manage documents "
             "in the OpenSearch index.\n\n"
             "Your capabilities:\n"
-            "- **Search**: Use `opensearch_search` to find relevant documents. Default search type is 'hybrid' "
+            "- **Search**: Use `opensearch_query` to find relevant documents. Default search type is 'hybrid' "
             "(combines BM25 text matching with neural vector search). You can also do 'text' or 'vector' only.\n"
             "- **Index**: Use `opensearch_index_document` to add a document to the index (auto-chunks and skips duplicates).\n"
             "- **Check existence**: Use `opensearch_document_exists` to see if a filename is already indexed.\n"

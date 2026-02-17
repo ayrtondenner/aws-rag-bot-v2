@@ -38,10 +38,16 @@ This is a **RAG (Retrieval-Augmented Generation) backend** built with **FastAPI*
 │   ├── runtime.py         # Session/runner initialization
 │   └── settings.py        # Agent settings (frozen dataclass)
 ├── shared/
-│   └── tools.py           # Shared tool functions used by both ADK agents and MCP server
+│   ├── __init__.py            # Cross-cutting helpers (transfer_to_root, DEFAULT_SAGEMAKER_DOCS_BUCKET_NAME)
+│   ├── s3_tools.py            # S3 tool functions + build_s3_tools()
+│   ├── document_tools.py      # Local-document tool functions + build_document_tools()
+│   └── opensearch_tools.py    # OpenSearch tool functions + build_opensearch_tools()
 ├── mcp_server/
-│   ├── main.py            # MCP server entry point (FastMCP, port 8002)
-│   └── tools.py           # MCP resource/tool wrappers over shared/tools.py
+│   ├── __init__.py            # FastMCP instance (mcp = FastMCP(...))
+│   ├── main.py                # MCP server entry point (port 8002)
+│   ├── s3_tools.py            # MCP resource wrappers for S3
+│   ├── document_tools.py      # MCP resource wrappers for local documents
+│   └── opensearch_tools.py    # MCP resource wrappers for OpenSearch
 ├── tests/
 │   ├── conftest.py        # Shared pytest fixtures (FastAPI test app, TestClient)
 │   ├── services/          # Service-layer unit tests (fake client pattern)

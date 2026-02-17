@@ -16,7 +16,7 @@ RAG (Retrieval-Augmented Generation) backend that ingests documents from AWS S3 
 
 This repo includes an experimental agent layer built with **Google Agent Development Kit (ADK)**.
 
-Agent tools are defined in a shared module so they can be reused by both the ADK agent layer and the MCP server: `shared/tools.py`.
+Agent tools are defined in domain-specific shared modules (`shared/s3_tools.py`, `shared/document_tools.py`, `shared/opensearch_tools.py`) so they can be reused by both the ADK agent layer and the MCP server.
 
 ### Current capabilities
 
@@ -107,14 +107,14 @@ This lets you keep FastAPI running on its usual port (commonly 8000) while testi
 
 This repo also includes an MCP server that exposes the same tool-style capabilities as the agent tools:
 
-The MCP tool implementations call same functions as the ADK tools in `shared/tools.py`.
+The MCP tool implementations call the same functions as the ADK tools in `shared/s3_tools.py`, `shared/document_tools.py`, and `shared/opensearch_tools.py`.
 
 - `s3_bucket_exists`
 - `s3_list_bucket_files`
 - `s3_get_file_content`
 - `list_local_sagemaker_docs`
 - `get_local_sagemaker_doc_content`
-- `opensearch_search`
+- `opensearch_query`
 - `opensearch_index_document`
 - `opensearch_document_exists`
 - `opensearch_list_indexed_documents`
