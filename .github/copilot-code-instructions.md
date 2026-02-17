@@ -174,7 +174,7 @@ The `FastMCP` instance lives in `mcp_server/__init__.py`. Each domain tool modul
 After implementing all steps, confirm:
 
 1. **`pytest`** — all new and existing tests pass.
-2. **`ruff check .`** — no lint errors.
+2. **`..\.venv\Scripts\ruff.exe check .`** — no lint errors (always invoke ruff via its direct executable path; do not use `conda activate`, `python -m ruff`, or bare `ruff` commands).
 3. **Swagger UI** (`/docs`) — new endpoints appear with correct examples.
 4. **Manual test** — hit the new routes (e.g., via `curl` or Swagger) for smoke testing.
 5. **Agent test** — run `adk web --port 8001` and verify the root agent delegates to the new sub-agent correctly.

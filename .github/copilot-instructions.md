@@ -18,6 +18,28 @@ This is a **RAG (Retrieval-Augmented Generation) backend** built with **FastAPI*
 - **pytest** — testing (with `FastAPI TestClient`, fake clients, stub services)
 - **ruff** — linting
 
+## Running Ruff
+
+The Conda environment is installed locally at `.venv/` (see `prefix` in `environment.yml`). Do **not** rely on `conda activate`, `python -m ruff`, or shell-activation scripts — they are fragile and often fail on Windows.
+
+**Always invoke ruff via its direct executable path:**
+
+```powershell
+.\.\.venv\Scripts\ruff.exe check .
+```
+
+For targeted checks on specific directories/files:
+
+```powershell
+.\.\.venv\Scripts\ruff.exe check shared/ mcp_server/ agent/agent_factory.py
+```
+
+To auto-fix fixable issues:
+
+```powershell
+.\.\.venv\Scripts\ruff.exe check . --fix
+```
+
 ## Project Structure
 
 ```
