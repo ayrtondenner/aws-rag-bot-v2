@@ -19,6 +19,8 @@ mcp = FastMCP(
     ),
 )
 
+# TODO: Refator tools to divide between: S3, local docs and OpenSearch
+
 # TODO: think of tools examples, right now we only have resources
 # Maybe tools/functions to upload files on S3/folder on the fly?
 @mcp.resource(
