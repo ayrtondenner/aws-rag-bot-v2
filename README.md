@@ -10,7 +10,29 @@ RAG (Retrieval-Augmented Generation) backend that ingests documents from AWS S3 
 - [x] Swagger documentation
 - [x] Google ADK agent
 - [x] MCP server
-- [ ] Github Wiki
+- [x] Github Wiki
+
+## Getting started
+
+This repo uses a **git submodule** for the [GitHub Wiki](https://github.com/ayrtondenner/aws-rag-bot-v2/wiki). Clone with submodules in one step:
+
+```bash
+git clone --recurse-submodules https://github.com/ayrtondenner/aws-rag-bot-v2.git
+```
+
+If you already cloned without `--recurse-submodules`, initialise the submodule manually:
+
+```bash
+git submodule update --init --recursive
+```
+
+### Automatic submodule updates (optional)
+
+The repo ships a `post-checkout` git hook in `.githooks/` that runs `git submodule update --init --recursive` automatically after every clone or branch switch. Activate it once:
+
+```bash
+git config core.hooksPath .githooks
+```
 
 ## Google ADK agent
 

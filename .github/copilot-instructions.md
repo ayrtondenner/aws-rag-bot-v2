@@ -46,6 +46,8 @@ To auto-fix fixable issues:
 ├── .github/
 │   ├── copilot-instructions.md       # General Copilot instructions (this file)
 │   └── copilot-code-instructions.md  # Code generation workflow & patterns
+├── .githooks/
+│   └── post-checkout                 # Auto-init submodules after clone/checkout
 ├── app/
 │   ├── error_handlers.py  # Centralised exception-to-HTTP-response handlers (register_error_handlers())
 │   ├── models/            # Pydantic request/response models
@@ -81,6 +83,7 @@ To auto-fix fixable issues:
 ├── scripts/               # Utility/smoke-test scripts
 ├── docs/
 │   └── opensearch_index_setup.md     # Dashboard Dev Tools commands for one-time OpenSearch setup
+├── wiki/                  # GitHub Wiki (git submodule)
 ├── main.py                # FastAPI app entry point (lifespan, routers)
 └── environment.yml        # Conda environment definition
 ```
