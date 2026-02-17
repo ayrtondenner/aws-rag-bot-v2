@@ -1,15 +1,12 @@
 import pytest
 
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from starlette import status
 
+from app.error_handlers import register_error_handlers
 from app.routes.document import router as document_router
 from app.routes.opensearch import router as opensearch_router
 from app.routes.s3 import router as s3_router
-from app.services.opensearch_service import OpenSearchServiceError
-from app.services.s3_service import S3ServiceError
 
 @pytest.fixture(scope='session')
 def sample_fixture():
@@ -22,21 +19,14 @@ def fastapi_app() -> FastAPI:
 
     Notes:
     - Does NOT use the production lifespan (avoids S3 provisioning during tests).
-    - Includes the same exception handlers as main.py.
+    - Includes the same exception handlers as main.py via register_error_handlers().
     """
 
     app = FastAPI()
     app.include_router(s3_router)
     app.include_router(document_router)
     app.include_router(opensearch_router)
-
-    @app.exception_handler(S3ServiceError)
-    async def s3_service_error_handler(request: Request, exc: S3ServiceError) -> JSONResponse:  # noqa: ARG001
-        return JSONResponse(status_code=status.HTTP_502_BAD_GATEWAY, content={"detail": str(exc)})
-
-    @app.exception_handler(OpenSearchServiceError)
-    async def opensearch_service_error_handler(request: Request, exc: OpenSearchServiceError) -> JSONResponse:  # noqa: ARG001
-        return JSONResponse(status_code=status.HTTP_502_BAD_GATEWAY, content={"detail": str(exc)})
+    register_error_handlers(app)
 
     return app
 
