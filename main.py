@@ -8,9 +8,11 @@ from starlette import status
 
 from app.routes.s3 import router as s3_router
 from app.routes.document import router as document_router
+from app.routes.opensearch import router as opensearch_router
 from app.services.dependencies import (
     get_s3_setup_service,
 )
+from app.services.opensearch_service import OpenSearchServiceError
 from app.services.s3_service import S3ServiceError
 
 def _ensure_logging() -> None:
@@ -59,6 +61,7 @@ app = FastAPI(lifespan=lifespan)
 
 app.include_router(s3_router)
 app.include_router(document_router)
+app.include_router(opensearch_router)
 
 
 @app.exception_handler(S3ServiceError)
@@ -71,6 +74,15 @@ async def s3_service_error_handler(request: Request, exc: S3ServiceError) -> JSO
     Returns:
         502 Bad Gateway with a JSON body: {"detail": "..."}
     """
+    return JSONResponse(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        content={"detail": str(exc)},
+    )
+
+
+@app.exception_handler(OpenSearchServiceError)
+async def opensearch_service_error_handler(request: Request, exc: OpenSearchServiceError) -> JSONResponse:
+    """Map OpenSearch service-layer failures to HTTP 502."""
     return JSONResponse(
         status_code=status.HTTP_502_BAD_GATEWAY,
         content={"detail": str(exc)},

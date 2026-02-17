@@ -6,8 +6,9 @@ from pathlib import Path
 import aiohttp
 from fastapi import FastAPI, Request
 
-from app.services.config import S3Config
+from app.services.config import OpenSearchConfig, S3Config
 from app.services.document_service import DocumentService
+from app.services.opensearch_service import OpenSearchService
 from app.services.s3_service import S3Service
 from app.services.setup.s3_setup_service import S3SetupService
 
@@ -32,6 +33,19 @@ def get_document_service() -> DocumentService:
     """FastAPI dependency provider for a DocumentService instance."""
 
     return DocumentService()
+
+
+def get_opensearch_service() -> OpenSearchService:
+    """FastAPI dependency provider for an OpenSearchService instance.
+
+    Returns:
+        An OpenSearchService configured from environment variables.
+    """
+
+    return OpenSearchService(
+        config=OpenSearchConfig.from_env(),
+        document_service=get_document_service(),
+    )
 
 
 def get_http_session_from_app(app: FastAPI) -> aiohttp.ClientSession:

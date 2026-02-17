@@ -50,6 +50,8 @@ This is a **RAG (Retrieval-Augmented Generation) backend** built with **FastAPI*
 ├── sagemaker-docs/        # Local markdown documentation corpus
 ├── prompts/               # Planning/prompt documents
 ├── scripts/               # Utility/smoke-test scripts
+├── docs/
+│   └── opensearch_index_setup.md     # Dashboard Dev Tools commands for one-time OpenSearch setup
 ├── main.py                # FastAPI app entry point (lifespan, routers, exception handlers)
 └── environment.yml        # Conda environment definition
 ```
@@ -99,4 +101,4 @@ Do not leave stale references. If a file, class, route, agent, or tool was renam
 
 ## Infrastructure Setup
 
-Some services require one-time infrastructure setup (e.g., OpenSearch pipelines, index creation). These should be documented as runnable scripts or dashboard instructions in a dedicated folder (e.g., `opensearch/setup_index.md`), **not** embedded in application startup code — unless the provisioning is idempotent and lightweight (like `S3SetupService` creating a bucket if absent).
+Some services require one-time infrastructure setup (e.g., OpenSearch pipelines, index creation). These should be documented as runnable scripts or dashboard instructions in a dedicated folder (e.g., `docs/opensearch_index_setup.md`), **not** embedded in application startup code — unless the provisioning is idempotent and lightweight (like `S3SetupService` creating a bucket if absent).

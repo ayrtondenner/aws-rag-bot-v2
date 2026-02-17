@@ -109,9 +109,9 @@ Update `mcp_server/tools.py`.
 
 ### 11. Dashboard Setup Script
 
-New file `opensearch/setup_index.md`.
+New file `docs/opensearch_index_setup.md`.
 
-Store in a top-level `opensearch/` folder (market practice: infra scripts colocated but separate from app code).
+Store in a top-level `docs/` folder (market practice: infra scripts colocated but separate from app code).
 
 Contents (copy-paste ready for OpenSearch Dashboard Dev Tools):
 

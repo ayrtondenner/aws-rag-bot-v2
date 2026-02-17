@@ -5,11 +5,12 @@ RAG (Retrieval-Augmented Generation) backend that ingests documents from AWS S3 
 ## Functionality checklist
 
 - [x] S3 integration
-- [ ] Hybrid search using OpenSearch
+- [x] Hybrid search using OpenSearch
 - [x] Tests via Pytest
 - [x] Swagger documentation
 - [x] Google ADK agent
 - [x] MCP server
+- [ ] Github Wiki
 
 ## Google ADK agent
 
@@ -29,6 +30,13 @@ Agent tools are defined in a shared module so they can be reused by both the ADK
 	- List files in the local `sagemaker-docs/` folder.
 	- Fetch a local doc file's content by filename.
 	- Transfer control back to the root agent when a request is not local-docs related.
+- **OpenSearch sub-agent** (`opensearch_agent`) with tools to:
+	- Search indexed documents using hybrid (BM25 + neural), text-only, or vector-only strategies.
+	- Index a single document (auto-chunks, skips duplicates).
+	- Check whether a document filename is already indexed.
+	- List all unique indexed document filenames.
+	- Get index-level statistics (document count, status).
+	- Transfer control back to the root agent when a request is not OpenSearch-related.
 
 ### Example conversations
 
@@ -106,6 +114,11 @@ The MCP tool implementations call same functions as the ADK tools in `shared/too
 - `s3_get_file_content`
 - `list_local_sagemaker_docs`
 - `get_local_sagemaker_doc_content`
+- `opensearch_search`
+- `opensearch_index_document`
+- `opensearch_document_exists`
+- `opensearch_list_indexed_documents`
+- `opensearch_get_index_stats`
 
 ### Run (Streamable HTTP)
 
@@ -134,6 +147,23 @@ python scripts/mcp_smoke_test.py --start-server --host 127.0.0.1 --port 8001
 ``` -->
 
 ## API routes
+
+### OpenSearch API routes
+
+Base path: `/opensearch`
+
+| Method | Path | Description | Query params | Body |
+| --- | --- | --- | --- | --- |
+| POST | `/opensearch/index` | Index a single document (auto-chunks, skips if already indexed). | `chunk_size`, `chunk_overlap` | `{ "filename": "...", "content": "..." }` |
+| POST | `/opensearch/bulk-index` | Bulk-index multiple documents. | _None_ | `{ "documents": [...], "chunk_size": 500, "chunk_overlap": 50 }` |
+| POST | `/opensearch/index-local-docs` | Index all local `sagemaker-docs/` files (idempotent). | `chunk_size`, `chunk_overlap` | _None_ |
+| POST | `/opensearch/search` | Search documents (hybrid, text, or vector). | _None_ | `{ "query": "...", "size": 10, "search_type": "hybrid" }` |
+| GET | `/opensearch/index/stats` | Get index statistics (doc count, status). | _None_ | _None_ |
+| GET | `/opensearch/documents` | List all indexed document filenames. | _None_ | _None_ |
+| GET | `/opensearch/document/exists` | Check if a document filename is indexed. | `filename` (required) | _None_ |
+| DELETE | `/opensearch/document/{doc_id}` | Delete a single document chunk by ID. | _None_ | _None_ |
+| DELETE | `/opensearch/documents` | Delete all chunks for a filename. | `filename` (required) | _None_ |
+
 ### S3 API routes
 
 Base path: `/s3`
@@ -168,6 +198,18 @@ Run just the S3 service tests:
 
 ```bash
 pytest -q tests/services/test_s3_service.py
+```
+
+Run just the OpenSearch service tests:
+
+```bash
+pytest -q tests/services/test_opensearch_service.py
+```
+
+Run just the OpenSearch route tests:
+
+```bash
+pytest -q tests/routes/test_opensearch_routes.py
 ```
 
 ### Service tests (fake async client pattern)
@@ -208,6 +250,8 @@ assert fake.calls[-1][0] == "get_object"
 ```
 
 Full reference tests are in `tests/services/test_s3_service.py`.
+
+The OpenSearch service tests follow the same pattern but with a sync fake client (since `opensearch-py` is sync, wrapped with `asyncio.to_thread`). See `tests/services/test_opensearch_service.py`.
 
 ## Copilot Instructions
 
