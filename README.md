@@ -4,6 +4,8 @@
 
 RAG (Retrieval-Augmented Generation) backend built with **FastAPI**, **AWS** (S3, Bedrock, OpenSearch Serverless), **Google ADK** agents, and an **MCP server**. Ingests documents, chunks and embeds them with Amazon Titan V2, and serves hybrid search (BM25 + neural) queries through a REST API, a conversational agent layer, and an MCP tool server.
 
+The project enables users to ask natural-language questions about **AWS SageMaker documentation** and get accurate answers backed by source documents - instead of searching through large documentation sets manually.
+
 > **Detailed documentation lives in the [GitHub Wiki](https://github.com/ayrtondenner/aws-rag-bot-v2/wiki).** Each section below links to its corresponding wiki page for in-depth explanations, code examples, and setup instructions.
 
 ## Architecture
@@ -61,6 +63,14 @@ Hybrid search combining BM25 text matching and neural vector search over 500-cha
 ## Google ADK Agent
 
 Root agent delegates to 3 sub-agents (S3, Document, OpenSearch), each with domain-specific tools defined in `shared/`. Powered by AWS Bedrock Claude Sonnet 4 via LiteLLM. Run with `adk web --port 8001`.
+
+Through the agent, users can:
+- **List available documents** in local storage or an S3 bucket
+- **Check if a specific document exists** locally, in S3, or in the OpenSearch index
+- **Fetch content** from a specific document (local file or S3 object)
+- **Search indexed documents** using OpenSearch hybrid search (BM25 + neural)
+- **Check S3 bucket status** (existence and accessibility)
+- **View OpenSearch index statistics** (document count, index health)
 
 > [Agent details, sub-agents, tools, example conversations &rarr; Wiki: Google ADK Agent](https://github.com/ayrtondenner/aws-rag-bot-v2/wiki/Google-ADK-Agent)
 
