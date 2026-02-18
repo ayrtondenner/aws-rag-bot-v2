@@ -1,5 +1,7 @@
 # OpenSearch Index Setup — Dashboard Dev Tools
 
+> **See also**: The [RAG and OpenSearch](https://github.com/ayrtondenner/aws-rag-bot-v2/wiki/RAG-and-OpenSearch#opensearch-index-setup) wiki page contains these same instructions alongside additional context on the RAG pipeline, hybrid search, and index mappings.
+
 > **One-time setup commands** to run in the **OpenSearch Dashboard → Dev Tools** console.
 >
 > These create the ML connector (Bedrock Titan Embed v2), register & deploy the model,

@@ -76,10 +76,9 @@ To auto-fix fixable issues:
 ├── tests/
 │   ├── conftest.py        # Shared pytest fixtures (FastAPI test app, TestClient)
 │   ├── services/          # Service-layer unit tests (fake client pattern)
-│   ├── routes/            # Route-layer tests (stub service + dependency override)
-│   └── shared/            # Tests for shared tool functions
+│   └── routes/            # Route-layer tests (stub service + dependency override)
 ├── sagemaker-docs/        # Local markdown documentation corpus
-├── prompts/               # Planning/prompt documents
+├── plans/                 # Planning/prompt documents
 ├── scripts/               # Utility/smoke-test scripts
 ├── docs/
 │   └── opensearch_index_setup.md     # Dashboard Dev Tools commands for one-time OpenSearch setup
@@ -123,10 +122,11 @@ New services should load configuration from environment variables. Document new 
 
 After **any** implementation work (new features, refactors, bug fixes, config changes, dependency updates, etc.), review and update all relevant documentation and instruction files:
 
-- **`README.md`** — API routes tables, agent capabilities, MCP tools list, environment variables, examples.
+- **`README.md`** — Project summary, technology tables, architecture diagram, section links.
+- **`wiki/`** — Detailed documentation pages (Architecture, AWS Technologies, RAG and OpenSearch, Google ADK Agent, MCP Server, API Routes, Installation, Testing).
 - **`.github/copilot-instructions.md`** — Project structure, tech stack, coding conventions, env vars.
 - **`.github/copilot-code-instructions.md`** — Workflow steps, pattern references, verification checklist.
-- **`prompts/`** — Any planning/prompt documents that reference changed components.
+- **`plans/`** — Any planning/prompt documents that reference changed components.
 - **`.env.example`** — If new environment variables were added or existing ones changed.
 
 Do not leave stale references. If a file, class, route, agent, or tool was renamed, moved, or removed, update every document that mentions it.
