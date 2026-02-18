@@ -83,6 +83,7 @@ To auto-fix fixable issues:
 ├── docs/
 │   └── opensearch_index_setup.md     # Dashboard Dev Tools commands for one-time OpenSearch setup
 ├── wiki/                  # GitHub Wiki (git submodule)
+├── CLAUDE.md                  # Claude Code entry point (points to Copilot instruction files)
 ├── main.py                # FastAPI app entry point (lifespan, routers)
 └── environment.yml        # Conda environment definition
 ```
@@ -120,12 +121,13 @@ New services should load configuration from environment variables. Document new 
 
 ## Documentation & Prompt Maintenance
 
-After **any** implementation work (new features, refactors, bug fixes, config changes, dependency updates, etc.), review and update all relevant documentation and instruction files:
+After **any** implementation work (new features, refactors, bug fixes, config changes, dependency updates, etc.), review and update all relevant documentation and instruction files. This applies when creating a new service layer AND when updating existing functionality — any change that affects behaviour, structure, or configuration may require documentation updates.
 
 - **`README.md`** — Project summary, technology tables, architecture diagram, section links.
 - **`wiki/`** — Detailed documentation pages (Architecture, AWS Technologies, RAG and OpenSearch, Google ADK Agent, MCP Server, API Routes, Installation, Testing).
 - **`.github/copilot-instructions.md`** — Project structure, tech stack, coding conventions, env vars.
 - **`.github/copilot-code-instructions.md`** — Workflow steps, pattern references, verification checklist.
+- **`CLAUDE.md`** — Claude Code entry point; update if instruction file responsibilities or documentation locations change.
 - **`plans/`** — Any planning/prompt documents that reference changed components.
 - **`.env.example`** — If new environment variables were added or existing ones changed.
 

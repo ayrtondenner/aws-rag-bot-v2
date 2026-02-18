@@ -86,14 +86,15 @@ FastAPI serves three route groups: `/opensearch`, `/s3`, `/document`. Interactiv
 
 > [Full route tables and error handling &rarr; Wiki: API Routes](https://github.com/ayrtondenner/aws-rag-bot-v2/wiki/API-Routes)
 
-## Copilot Instructions
+## AI Assistant Instructions
 
-This project uses [VS Code custom instruction files](https://aka.ms/vscode-ghcp-custom-instructions) to guide GitHub Copilot during development. The instruction files are git-tracked and automatically picked up by VS Code:
+This project uses git-tracked instruction files to guide AI coding assistants ([GitHub Copilot](https://aka.ms/vscode-ghcp-custom-instructions) and Claude Code) during development. The instruction files are automatically picked up by VS Code:
 
-| File | Scope |
-|------|-------|
-| `.github/copilot-instructions.md` | General — project overview, tech stack, coding conventions |
-| `.github/copilot-code-instructions.md` | Code generation — step-by-step implementation workflow |
+| File | Assistant | Scope |
+|------|-----------|-------|
+| `.github/copilot-instructions.md` | GitHub Copilot | General — project overview, tech stack, coding conventions |
+| `.github/copilot-code-instructions.md` | GitHub Copilot | Code generation — step-by-step implementation workflow |
+| `CLAUDE.md` | Claude Code | Entry point — points to the Copilot files as the single source of truth |
 
 ## Technologies
 
