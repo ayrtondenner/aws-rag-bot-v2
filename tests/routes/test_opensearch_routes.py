@@ -87,6 +87,7 @@ class StubOpenSearchService:
 
     async def bulk_index_documents(
         self, *, documents: list[IndexDocumentRequest], chunk_size: int = 500, chunk_overlap: int = 50,
+        max_concurrency: int = 5,
     ) -> BulkIndexResponse:
         self.seen["bulk_index.documents"] = documents
         if self.bulk_index_exc is not None:

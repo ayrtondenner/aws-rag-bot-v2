@@ -28,3 +28,33 @@ all three:
 After any implementation work, review all three locations and update whichever pages are
 affected. See the "Documentation & Prompt Maintenance" section in
 `.github/copilot-instructions.md` for the complete checklist.
+
+## Running Tests & Linting
+
+The Conda environment is installed at `.venv/` as a **local prefix** (not a named env).
+Running `.exe` files directly from a non-conda shell (e.g., bash inside VSCode) fails with
+DLL errors. Always use `conda run --prefix`:
+
+```powershell
+# Run all tests
+conda run --prefix .venv pytest tests/ -v
+
+# Run a specific test file
+conda run --prefix .venv pytest tests/routes/test_opensearch_routes.py -v
+
+# Lint
+conda run --prefix .venv ruff check .
+
+# Lint with auto-fix
+conda run --prefix .venv ruff check . --fix
+```
+
+When running from **Claude Code's bash shell**, pipe through `powershell.exe` and redirect
+output to a file (stdout doesn't pipe cleanly through bash → powershell):
+
+```bash
+powershell.exe -NoProfile -Command "conda run --prefix '.venv' pytest tests/ -v 2>&1 | Out-File -FilePath 'test_results.txt' -Encoding utf8"
+# Then read test_results.txt
+```
+
+See `docs/running-tests.md` for a full DO / DON'T reference.
