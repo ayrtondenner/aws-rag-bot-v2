@@ -1,267 +1,141 @@
 # aws-rag-bot-v2
 
-RAG (Retrieval-Augmented Generation) backend that ingests documents from AWS S3 and serves a FastAPI API for querying them. The goal is to evolve this into a production-ready, hybrid-search RAG service on AWS (S3 + OpenSearch) with solid testing, docs, and an agent layer.
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/ayrtondenner/aws-rag-bot-v2)
 
-## Functionality checklist
+RAG (Retrieval-Augmented Generation) backend built with **FastAPI**, **AWS** (S3, Bedrock, OpenSearch Serverless), **Google ADK** agents, and an **MCP server**. Ingests documents, chunks and embeds them with Amazon Titan V2, and serves hybrid search (BM25 + neural) queries through a REST API, a conversational agent layer, and an MCP tool server.
 
-- [x] S3 integration
-- [x] Hybrid search using OpenSearch
-- [x] Tests via Pytest
-- [x] Swagger documentation
-- [x] Google ADK agent
-- [x] MCP server
-- [ ] Github Wiki
+The project enables users to ask natural-language questions about **AWS SageMaker documentation** and get accurate answers backed by source documents - instead of searching through large documentation sets manually.
 
-## Google ADK agent
+> **Detailed documentation lives in the [GitHub Wiki](https://github.com/ayrtondenner/aws-rag-bot-v2/wiki).** Each section below links to its corresponding wiki page for in-depth explanations, code examples, and setup instructions.
 
-This repo includes an experimental agent layer built with **Google Agent Development Kit (ADK)**.
+## Architecture
 
-Agent tools are defined in domain-specific shared modules (`shared/s3_tools.py`, `shared/document_tools.py`, `shared/opensearch_tools.py`) so they can be reused by both the ADK agent layer and the MCP server.
+The project exposes three entry points into a shared service layer backed by AWS:
 
-### Current capabilities
+```mermaid
+graph LR
+    subgraph Entry Points
+        API["FastAPI :8000"]
+        Agent["ADK Agent :8001"]
+        MCP["MCP Server :8002"]
+    end
 
-- **Root agent** that delegates to sub-agents.
-- **S3 sub-agent** (`s3_agent`) with tools to:
-	- Check whether an S3 bucket exists / is accessible.
-	- List objects in the configured bucket (optional prefix).
-	- Fetch an object's content by key.
-	- Transfer control back to the root agent when a request is not S3-related.
-- **Local docs sub-agent** (`document_agent`) with tools to:
-	- List files in the local `sagemaker-docs/` folder.
-	- Fetch a local doc file's content by filename.
-	- Transfer control back to the root agent when a request is not local-docs related.
-- **OpenSearch sub-agent** (`opensearch_agent`) with tools to:
-	- Search indexed documents using hybrid (BM25 + neural), text-only, or vector-only strategies.
-	- Index a single document (auto-chunks, skips duplicates).
-	- Check whether a document filename is already indexed.
-	- List all unique indexed document filenames.
-	- Get index-level statistics (document count, status).
-	- Transfer control back to the root agent when a request is not OpenSearch-related.
+    subgraph Core
+        Services["Service Layer"]
+        Shared["Shared Tools"]
+    end
 
-### Example conversations
+    subgraph AWS
+        S3["S3"]
+        Bedrock["Bedrock\nClaude Sonnet 4"]
+        Titan["Titan V2\nEmbeddings"]
+        OS["OpenSearch\nServerless"]
+    end
 
-These are real-style examples based on the eval runs in `agent/evalset5d9e47.evalset.json`.
-
-#### Example 1 — S3 bucket checks, listing, and file content
-
-```text
-User: hi!
-Agent: Hello! I can help with S3 operations (bucket exists, list files, fetch content). What would you like to do?
-
-User: Check if the bucket for sagemaker docs is created
-Agent: (delegates to s3_agent) The SageMaker docs bucket exists and is accessible.
-
-User: And what about the "opensearch-vectors" bucket? Was it created already?
-Agent: (s3_agent) The "opensearch-vectors" bucket does not exist or is not accessible.
-
-User: Ok, back to sagemaker bucket. How many texts do we have stored in it?
-Agent: (s3_agent) Lists objects and summarizes the count (example output: 336 markdown files under `sagemaker-docs/`).
-
-User: Ok, give me content for file "sagemaker-algo-common-data-formats" in this bucket then
-Agent: (s3_agent) Fetches `sagemaker-docs/sagemaker-algo-common-data-formats.md` and returns its content.
-
-User: Is there a file named "sagemaker-random-ideas" stored in this bucket?
-Agent: (s3_agent) Searches by prefix and confirms no matching files.
+    API --> Services
+    Agent --> Shared --> Services
+    MCP --> Shared
+    Services --> S3 & OS
+    Agent -.-> Bedrock
+    OS -.-> Titan
 ```
 
-Notes:
+> [Detailed architecture, project structure, and startup process &rarr; Wiki: Architecture](https://github.com/ayrtondenner/aws-rag-bot-v2/wiki/Architecture)
 
-- If you omit a bucket name, the agent uses the default bucket from `S3_BUCKET_NAME`.
-- For content fetches, providing the full key (e.g. `sagemaker-docs/<name>.md`) is the most reliable.
+## AWS Technologies
 
-#### Example 2 — Comparing local docs vs S3 docs (agent delegation)
+| Service | Purpose |
+|---------|---------|
+| **Amazon S3** | Document storage (`aioboto3`, auto-provisioned at startup) |
+| **Amazon Bedrock — Claude Sonnet 4** | LLM for the Google ADK agent (via LiteLLM) |
+| **Amazon Bedrock — Titan V2 Embeddings** | 1024-dim embeddings (LangChain `BedrockEmbeddings` + OpenSearch ML Connector) |
+| **Amazon OpenSearch Serverless** | Hybrid search index — BM25 + neural (`opensearch-py`, SigV4 auth) |
+| **IAM** | Service roles for Bedrock and OpenSearch access |
 
-```text
-User: hi there!
-Agent: Hello! I can help with S3 bucket operations and local documentation tasks.
+> [Full AWS details and environment variables &rarr; Wiki: AWS Technologies](https://github.com/ayrtondenner/aws-rag-bot-v2/wiki/AWS-Technologies)
 
-User: I wanna check if we have the same amount of documents in both local folder and S3 bucket for sagemaker documentation.
-Agent: (root_agent) Starts with local docs.
-Agent: (delegates to document_agent) Counts files in `sagemaker-docs/`.
-Agent: (document_agent -> root_agent) Reports local count (example: 336).
-Agent: (delegates to s3_agent) Lists objects in the configured S3 bucket.
-Agent: Summarizes whether the counts match.
-```
+## RAG Pipeline
 
-This is a good “handoff” example: the root agent coordinates the work, while sub-agents do the specialist operations and transfer control back when done.
+Hybrid search combining BM25 text matching and neural vector search over 500-character chunks (50-char overlap) embedded with Titan V2. Documents are ingested from local `sagemaker-docs/` files (336 markdown docs) or via API. The OpenSearch ingest pipeline auto-embeds content; the search pipeline normalises and weights results (0.3 BM25, 0.7 neural).
 
-### LLM model
+> [Full RAG documentation, OpenSearch setup, pipelines &rarr; Wiki: RAG and OpenSearch](https://github.com/ayrtondenner/aws-rag-bot-v2/wiki/RAG-and-OpenSearch)
 
-The agent is currently configured to use **AWS Bedrock – Claude Sonnet 4** via LiteLLM.
-By default it uses the cross-region inference profile:
+## Google ADK Agent
 
-- Inference profile ID: `global.anthropic.claude-sonnet-4-20250514-v1:0`
-- Model ID: `anthropic.claude-sonnet-4-20250514-v1:0`
+Root agent delegates to 3 sub-agents (S3, Document, OpenSearch), each with domain-specific tools defined in `shared/`. Powered by AWS Bedrock Claude Sonnet 4 via LiteLLM. Run with `adk web --port 8001`.
 
-### Running the agent (side-by-side with FastAPI)
+Through the agent, users can:
+- **List available documents** in local storage or an S3 bucket
+- **Check if a specific document exists** locally, in S3, or in the OpenSearch index
+- **Fetch content** from a specific document (local file or S3 object)
+- **Search indexed documents** using OpenSearch hybrid search (BM25 + neural)
+- **Check S3 bucket status** (existence and accessibility)
+- **View OpenSearch index statistics** (document count, index health)
 
-To avoid port conflicts with the FastAPI app, we run the ADK web UI on **port 8001**:
+> [Agent details, sub-agents, tools, example conversations &rarr; Wiki: Google ADK Agent](https://github.com/ayrtondenner/aws-rag-bot-v2/wiki/Google-ADK-Agent)
+
+## MCP Server
+
+FastMCP server exposing 10 tools via streamable-http on port 8002. Uses the same shared tool functions as the agent. Run with `python -m mcp_server.main`.
+
+> [MCP tools, configuration, running instructions &rarr; Wiki: MCP Server](https://github.com/ayrtondenner/aws-rag-bot-v2/wiki/MCP-Server)
+
+## API & Swagger
+
+FastAPI serves three route groups: `/opensearch`, `/s3`, `/document`. Interactive Swagger documentation is available at `/docs` when the server is running.
+
+> [Full route tables and error handling &rarr; Wiki: API Routes](https://github.com/ayrtondenner/aws-rag-bot-v2/wiki/API-Routes)
+
+## AI Assistant Instructions
+
+This project uses git-tracked instruction files to guide AI coding assistants ([GitHub Copilot](https://aka.ms/vscode-ghcp-custom-instructions) and Claude Code) during development. The instruction files are automatically picked up by VS Code:
+
+| File | Assistant | Scope |
+|------|-----------|-------|
+| `.github/copilot-instructions.md` | GitHub Copilot | General — project overview, tech stack, coding conventions |
+| `.github/copilot-code-instructions.md` | GitHub Copilot | Code generation — step-by-step implementation workflow |
+| `CLAUDE.md` | Claude Code | Entry point — points to the Copilot files as the single source of truth |
+
+## Technologies
+
+| Technology | Role |
+|------------|------|
+| **FastAPI** | HTTP API framework |
+| **Pydantic v2** | Request/response validation |
+| **LangChain** | Text splitting (`RecursiveCharacterTextSplitter`) + Bedrock embeddings |
+| **Google ADK** | Agent framework (root + sub-agent delegation) |
+| **FastMCP** | MCP server |
+| **LiteLLM** | LLM routing (Bedrock Claude Sonnet 4) |
+| **aioboto3** | Async AWS S3 SDK |
+| **opensearch-py** | OpenSearch client (SigV4 via `requests-aws4auth`) |
+| **Pytest** | Testing framework |
+| **Ruff** | Linting |
+| **Conda** | Environment management (`environment.yml`) |
+
+## Installation
+
+Clone with submodules and create the Conda environment:
 
 ```bash
-adk web --port 8001
+git clone --recurse-submodules https://github.com/ayrtondenner/aws-rag-bot-v2.git
+conda env create -f environment.yml
+conda activate aws-rag-bot
 ```
 
-This lets you keep FastAPI running on its usual port (commonly 8000) while testing the agent in parallel.
-
-## MCP server
-
-This repo also includes an MCP server that exposes the same tool-style capabilities as the agent tools:
-
-The MCP tool implementations call the same functions as the ADK tools in `shared/s3_tools.py`, `shared/document_tools.py`, and `shared/opensearch_tools.py`.
-
-- `s3_bucket_exists`
-- `s3_list_bucket_files`
-- `s3_get_file_content`
-- `list_local_sagemaker_docs`
-- `get_local_sagemaker_doc_content`
-- `opensearch_query`
-- `opensearch_index_document`
-- `opensearch_document_exists`
-- `opensearch_list_indexed_documents`
-- `opensearch_get_index_stats`
-
-### Run (Streamable HTTP)
-
-```bash
-python -m mcp_server.main
-```
-
-By default, FastMCP is mounted here at `/mcp` on port 8002.
-
-### Required environment
-
-S3 tools require `S3_BUCKET_NAME` (unless you pass `bucket_name` to tools that accept it), and AWS credentials via the usual AWS environment variables/config.
-
-<!-- ### Smoke test
-
-With the MCP server running on `http://127.0.0.1:8001/mcp`:
-
-```bash
-python scripts/mcp_smoke_test.py --url http://127.0.0.1:8001/mcp
-```
-
-Or let the script start/stop the server automatically:
-
-```bash
-python scripts/mcp_smoke_test.py --start-server --host 127.0.0.1 --port 8001
-``` -->
-
-## API routes
-
-### OpenSearch API routes
-
-Base path: `/opensearch`
-
-| Method | Path | Description | Query params | Body |
-| --- | --- | --- | --- | --- |
-| POST | `/opensearch/index` | Index a single document (auto-chunks, skips if already indexed). | `chunk_size`, `chunk_overlap` | `{ "filename": "...", "content": "..." }` |
-| POST | `/opensearch/bulk-index` | Bulk-index multiple documents. | _None_ | `{ "documents": [...], "chunk_size": 500, "chunk_overlap": 50 }` |
-| POST | `/opensearch/index-local-docs` | Index all local `sagemaker-docs/` files (idempotent). | `chunk_size`, `chunk_overlap` | _None_ |
-| POST | `/opensearch/search` | Search documents (hybrid, text, or vector). | _None_ | `{ "query": "...", "size": 10, "search_type": "hybrid" }` |
-| GET | `/opensearch/index/stats` | Get index statistics (doc count, status). | _None_ | _None_ |
-| GET | `/opensearch/documents` | List all indexed document filenames. | _None_ | _None_ |
-| GET | `/opensearch/document/exists` | Check if a document filename is indexed. | `filename` (required) | _None_ |
-| DELETE | `/opensearch/document/{doc_id}` | Delete a single document chunk by ID. | _None_ | _None_ |
-| DELETE | `/opensearch/documents` | Delete all chunks for a filename. | `filename` (required) | _None_ |
-
-### S3 API routes
-
-Base path: `/s3`
-
-| Method | Path | Description | Query params |
-| --- | --- | --- | --- |
-| GET | `/s3/bucket/exists` | Check whether the configured S3 bucket exists (and is accessible). | _None_ |
-| GET | `/s3/bucket/files/count` | Count objects in the configured S3 bucket. | `prefix` (optional) |
-| GET | `/s3/files` | List objects in the configured S3 bucket. | `prefix` (optional) |
-| GET | `/s3/file/content` | Get raw content of an object by key. | `file_name` (required) |
-
-### Document API routes
-
-Base path: `/document`
-
-| Method | Path | Description | Query params | Body |
-| --- | --- | --- | --- | --- |
-| POST | `/document/chunks` | Split text into overlapping chunks. | `chunk_size` (optional), `chunk_overlap` (optional) | `{ "text": "..." }` |
-| GET | `/document/local-docs` | List files in the local `sagemaker-docs/` folder. | _None_ | _None_ |
-| GET | `/document/local-docs/content` | Get the text content of a local `sagemaker-docs/` file by filename. | `filename` (required) | _None_ |
-| POST | `/document/embed` | Generate an embedding vector for input text (Amazon Bedrock). | _None_ | `{ "text": "..." }` |
+> [Full installation instructions, environment variables, OpenSearch setup &rarr; Wiki: Installation](https://github.com/ayrtondenner/aws-rag-bot-v2/wiki/Installation)
 
 ## Testing
-
-Run all tests:
 
 ```bash
 pytest
 ```
 
-Run just the S3 service tests:
+Tests use fake/stub client patterns for fast, isolated unit testing without calling real AWS services.
 
-```bash
-pytest -q tests/services/test_s3_service.py
-```
+> [Test structure, patterns, commands &rarr; Wiki: Testing](https://github.com/ayrtondenner/aws-rag-bot-v2/wiki/Testing)
 
-Run just the OpenSearch service tests:
+## Startup Process
 
-```bash
-pytest -q tests/services/test_opensearch_service.py
-```
+On startup, FastAPI's lifespan handler initialises logging, creates a shared `aiohttp` session, and provisions the S3 bucket if absent (idempotent). Local `sagemaker-docs/` files can then be indexed into OpenSearch on demand via the `/opensearch/index-local-docs` endpoint.
 
-Run just the OpenSearch route tests:
-
-```bash
-pytest -q tests/routes/test_opensearch_routes.py
-```
-
-### Service tests (fake async client pattern)
-
-Most services in this repo are thin wrappers around external APIs (AWS, HTTP, etc). For fast and reliable unit tests, prefer faking the dependency rather than calling the real service.
-
-Example: `S3Service` creates its own `aioboto3` client internally. In tests we replace the private `_client()` factory with a fake async context manager that records calls and returns controlled responses.
-
-```python
-import asyncio
-from app.services.config import S3Config
-from app.services.s3_service import S3Service
-
-
-class FakeS3Client:
-	def __init__(self):
-		self.calls = []
-		self.get_object_response = {"Body": None}
-
-	async def __aenter__(self):
-		return self
-
-	async def __aexit__(self, exc_type, exc, tb):
-		return False
-
-	async def get_object(self, **kwargs):
-		self.calls.append(("get_object", kwargs))
-		return self.get_object_response
-
-
-fake = FakeS3Client()
-service = S3Service(S3Config(bucket_name="unit-test-bucket"))
-service._client = lambda: fake  # replace aioboto3 client factory
-
-data = asyncio.run(service.get_file_content(key="docs/a.md"))
-assert data == b""
-assert fake.calls[-1][0] == "get_object"
-```
-
-Full reference tests are in `tests/services/test_s3_service.py`.
-
-The OpenSearch service tests follow the same pattern but with a sync fake client (since `opensearch-py` is sync, wrapped with `asyncio.to_thread`). See `tests/services/test_opensearch_service.py`.
-
-## Copilot Instructions
-
-This project uses [VS Code custom instructions files](https://aka.ms/vscode-ghcp-custom-instructions) to guide GitHub Copilot during development. The instruction files are git-tracked, so every developer who clones the repo gets them automatically.
-
-| File | Scope | Description |
-| --- | --- | --- |
-| `.github/copilot-instructions.md` | General (always included) | Project overview, tech stack, coding conventions, env vars |
-| `.github/copilot-code-instructions.md` | Code generation | Step-by-step workflow for implementing new service layers (Config → Models → Service → Dependencies → Routes → Tests → Shared Tools → Agent → MCP) |
-
-These files are automatically picked up by VS Code — no `settings.json` configuration required.
-
-For more information on how custom instruction files work, see the [VS Code Copilot documentation](https://code.visualstudio.com/docs/copilot/copilot-customization).
+> [Detailed startup flow &rarr; Wiki: Architecture — Startup Process](https://github.com/ayrtondenner/aws-rag-bot-v2/wiki/Architecture#startup-process)

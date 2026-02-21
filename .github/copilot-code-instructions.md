@@ -179,4 +179,4 @@ After implementing all steps, confirm:
 4. **Manual test** — hit the new routes (e.g., via `curl` or Swagger) for smoke testing.
 5. **Agent test** — run `adk web --port 8001` and verify the root agent delegates to the new sub-agent correctly.
 6. **MCP test** — verify MCP resources are listed and callable.
-7. **Documentation** — update `README.md`, `.github/copilot-instructions.md`, `.github/copilot-code-instructions.md`, `prompts/`, and `.env.example` to reflect all changes (new routes, agents, tools, env vars, structure changes, etc.). See the "Documentation & Prompt Maintenance" section in `.github/copilot-instructions.md`.
+7. **Documentation** — update `README.md`, `.github/copilot-instructions.md`, `.github/copilot-code-instructions.md`, `CLAUDE.md`, `plans/`, and `.env.example` to reflect all changes (new routes, agents, tools, env vars, structure changes, etc.). See the "Documentation & Prompt Maintenance" section in `.github/copilot-instructions.md`.

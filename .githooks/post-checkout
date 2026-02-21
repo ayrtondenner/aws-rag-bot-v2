@@ -1,0 +1,5 @@
+#!/bin/sh
+# post-checkout hook — initialise git submodules after clone or branch switch.
+# Activated by running:  git config core.hooksPath .githooks
+
+git submodule update --init --recursive
