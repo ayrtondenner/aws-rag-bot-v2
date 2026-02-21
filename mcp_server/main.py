@@ -1,5 +1,12 @@
 from __future__ import annotations
-from .tools import mcp
+
+from mcp_server import mcp
+
+# Side-effect imports: register @mcp.resource decorators on the shared instance.
+import mcp_server.s3_tools  # noqa: F401
+import mcp_server.document_tools  # noqa: F401
+import mcp_server.opensearch_tools  # noqa: F401
+
 
 def main() -> None:
 	mcp.settings.port = 8002

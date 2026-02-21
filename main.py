@@ -2,16 +2,15 @@ import logging
 from contextlib import asynccontextmanager
 
 import aiohttp
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
-from starlette import status
+from fastapi import FastAPI
 
+from app.error_handlers import register_error_handlers
 from app.routes.s3 import router as s3_router
 from app.routes.document import router as document_router
+from app.routes.opensearch import router as opensearch_router
 from app.services.dependencies import (
     get_s3_setup_service,
 )
-from app.services.s3_service import S3ServiceError
 
 def _ensure_logging() -> None:
     formatter = logging.Formatter("%(levelname)s: %(message)s")
@@ -59,22 +58,8 @@ app = FastAPI(lifespan=lifespan)
 
 app.include_router(s3_router)
 app.include_router(document_router)
-
-
-@app.exception_handler(S3ServiceError)
-async def s3_service_error_handler(request: Request, exc: S3ServiceError) -> JSONResponse:
-    """Map S3 service-layer failures to a consistent HTTP response.
-
-    This keeps AWS/S3 errors from leaking internal details to API consumers while still
-    returning a predictable payload the frontend/clients can handle.
-
-    Returns:
-        502 Bad Gateway with a JSON body: {"detail": "..."}
-    """
-    return JSONResponse(
-        status_code=status.HTTP_502_BAD_GATEWAY,
-        content={"detail": str(exc)},
-    )
+app.include_router(opensearch_router)
+register_error_handlers(app)
 
 
 @app.get("/")
