@@ -18,27 +18,40 @@ This is a **RAG (Retrieval-Augmented Generation) backend** built with **FastAPI*
 - **pytest** — testing (with `FastAPI TestClient`, fake clients, stub services)
 - **ruff** — linting
 
-## Running Ruff
+## Running Tests & Linting
 
 The Conda environment is installed locally at `.venv/` (see `prefix` in `environment.yml`). Do **not** rely on `conda activate`, `python -m ruff`, or shell-activation scripts — they are fragile and often fail on Windows.
 
-**Always invoke ruff via its direct executable path:**
+### From a PowerShell terminal (human developer)
+
+Invoke tools via their direct executable paths:
 
 ```powershell
-.\.\.venv\Scripts\ruff.exe check .
+# Linting
+.\.venv\Scripts\ruff.exe check .
+.\.venv\Scripts\ruff.exe check shared/ mcp_server/ agent/agent_factory.py
+.\.venv\Scripts\ruff.exe check . --fix
+
+# Tests
+.\.venv\Scripts\pytest.exe tests/ -v
+.\.venv\Scripts\pytest.exe tests/routes/test_opensearch_routes.py -v
 ```
 
-For targeted checks on specific directories/files:
+### From Claude Code / automated tools (bash shell on Windows)
 
-```powershell
-.\.\.venv\Scripts\ruff.exe check shared/ mcp_server/ agent/agent_factory.py
+Direct `.exe` paths fail from bash with DLL errors (exit code 3228369023). Use `conda run --prefix` instead, piping output to a file:
+
+```bash
+# Tests
+powershell.exe -NoProfile -Command "conda run --prefix '.venv' pytest tests/ -v 2>&1 | Out-File -FilePath 'test_results.txt' -Encoding utf8"
+# Then read test_results.txt for results
+
+# Linting
+powershell.exe -NoProfile -Command "conda run --prefix '.venv' ruff check . 2>&1 | Out-File -FilePath 'lint_results.txt' -Encoding utf8"
+# Then read lint_results.txt for results
 ```
 
-To auto-fix fixable issues:
-
-```powershell
-.\.\.venv\Scripts\ruff.exe check . --fix
-```
+See `docs/running-tests.md` for a full DO / DON'T reference.
 
 ## Project Structure
 

@@ -27,6 +27,7 @@ class BulkIndexRequest(BaseModel):
     documents: list[IndexDocumentRequest] = Field(..., min_length=1, description="Documents to index.")
     chunk_size: int = Field(default=500, ge=1, description="Target chunk size in characters.")
     chunk_overlap: int = Field(default=50, ge=0, description="Overlap size in characters between chunks.")
+    max_concurrency: int = Field(default=5, ge=1, le=20, description="Maximum documents indexed in parallel.")
 
 
 class BulkIndexResponse(BaseModel):

@@ -112,6 +112,7 @@ async def bulk_index_documents(
             documents=payload.documents,
             chunk_size=payload.chunk_size,
             chunk_overlap=payload.chunk_overlap,
+            max_concurrency=payload.max_concurrency,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -139,6 +140,7 @@ async def bulk_index_documents(
 async def index_local_docs(
     chunk_size: int = Query(default=500, ge=1, description="Target chunk size in characters."),
     chunk_overlap: int = Query(default=50, ge=0, description="Overlap between chunks."),
+    max_concurrency: int = Query(default=5, ge=1, le=20, description="Maximum documents indexed in parallel."),
     opensearch: OpenSearchService = Depends(get_opensearch_service),
     documents: DocumentService = Depends(get_document_service),
 ) -> BulkIndexResponse:
@@ -166,6 +168,7 @@ async def index_local_docs(
         documents=docs,
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
+        max_concurrency=max_concurrency,
     )
 
 
