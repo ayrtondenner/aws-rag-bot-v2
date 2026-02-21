@@ -110,7 +110,7 @@ def test_bucket_exists_false_when_not_found_by_error_code():
 
     assert asyncio.run(service.bucket_exists(bucket_name="missing")) is False
 
-
+# TODO: fix this test
 def test_bucket_exists_raises_on_access_denied():
     fake = FakeS3Client()
     fake.head_bucket_exc = _make_client_error(code="AccessDenied", status=403)

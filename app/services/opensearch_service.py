@@ -4,6 +4,8 @@ import asyncio
 import logging
 from typing import Any, Literal
 
+from tqdm import tqdm
+
 import boto3
 from opensearchpy import OpenSearch, RequestsHttpConnection
 from requests_aws4auth import AWS4Auth
@@ -190,43 +192,50 @@ class OpenSearchService:
         doc_ids = await self._bulk_index_chunks(filename=filename, chunks=chunks)
         return IndexDocumentResponse(filename=filename, chunk_count=len(doc_ids), doc_ids=doc_ids, skipped=False)
 
-    # TODO: Check if this can happens in parallel, maybe using asyncio or similar
     async def bulk_index_documents(
         self,
         *,
         documents: list[IndexDocumentRequest],
         chunk_size: int = 500,
         chunk_overlap: int = 50,
+        max_concurrency: int = 5,
     ) -> BulkIndexResponse:
-        """Bulk-index multiple documents, skipping those already indexed.
+        """Bulk-index multiple documents in parallel, skipping those already indexed.
+
+        Uses ``asyncio.gather()`` with a semaphore to process up to
+        *max_concurrency* documents at a time.  Each document's I/O
+        (existence check + bulk indexing) runs on a separate thread via
+        ``asyncio.to_thread()``, giving true parallelism for network calls.
 
         Args:
             documents: List of documents to index.
             chunk_size: Target chunk size in characters.
             chunk_overlap: Overlap between consecutive chunks.
+            max_concurrency: Maximum number of documents indexed in parallel.
 
         Returns:
             A ``BulkIndexResponse`` summarising the operation.
         """
 
-        results: list[IndexDocumentResponse] = []
-        total_chunks = 0
-        indexed_count = 0
-        skipped_count = 0
+        sem = asyncio.Semaphore(max_concurrency)
 
-        for doc in documents:
-            resp = await self.index_document(
-                filename=doc.filename,
-                content=doc.content,
-                chunk_size=chunk_size,
-                chunk_overlap=chunk_overlap,
-            )
-            results.append(resp)
-            total_chunks += resp.chunk_count
-            if resp.skipped:
-                skipped_count += 1
-            else:
-                indexed_count += 1
+        async def _index_one(doc: IndexDocumentRequest) -> IndexDocumentResponse:
+            async with sem:
+                resp = await self.index_document(
+                    filename=doc.filename,
+                    content=doc.content,
+                    chunk_size=chunk_size,
+                    chunk_overlap=chunk_overlap,
+                )
+            pbar.update(1)
+            return resp
+
+        with tqdm(total=len(documents), desc="Indexing documents", unit="doc") as pbar:
+            results = list(await asyncio.gather(*[_index_one(doc) for doc in documents]))
+
+        total_chunks = sum(r.chunk_count for r in results)
+        indexed_count = sum(1 for r in results if not r.skipped)
+        skipped_count = sum(1 for r in results if r.skipped)
 
         return BulkIndexResponse(
             total_chunks=total_chunks,

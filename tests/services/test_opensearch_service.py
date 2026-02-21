@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from typing import Any
 
 import pytest
@@ -268,20 +269,20 @@ def test_index_document_empty_chunks_returns_zero():
 
 
 def test_bulk_index_documents_mixes_new_and_existing():
-    call_count = {"n": 0}
+    """Tests mixed scenario with parallel execution: one doc exists, one is new."""
 
     fake = FakeOpenSearchClient()
+    lock = threading.Lock()
 
-    # First search → exists (skip), second search → not exists
-    original_search = fake.search
-
+    # Thread-safe side-effect: match by filename in the query body.
     def _search_side_effect(**kwargs: Any) -> dict[str, Any]:
-        call_count["n"] += 1
-        if call_count["n"] == 1:
-            fake.search_response = {"hits": {"total": {"value": 3}, "hits": []}}
-        else:
-            fake.search_response = {"hits": {"total": {"value": 0}, "hits": []}}
-        return original_search(**kwargs)
+        body = kwargs.get("body", {})
+        filename = body.get("query", {}).get("term", {}).get("filename", "")
+        with lock:
+            fake.calls.append(("search", kwargs))
+        if filename == "old.md":
+            return {"hits": {"total": {"value": 3}, "hits": []}}
+        return {"hits": {"total": {"value": 0}, "hits": []}}
 
     fake.search = _search_side_effect  # type: ignore[method-assign]
 
@@ -303,6 +304,72 @@ def test_bulk_index_documents_mixes_new_and_existing():
     assert resp.skipped_count == 1
     assert resp.total_chunks == 1
     assert len(resp.results) == 2
+
+
+def test_bulk_index_documents_all_skipped():
+    """All documents already exist — everything should be skipped."""
+    fake = FakeOpenSearchClient()
+    fake.search_response = {"hits": {"total": {"value": 1}, "hits": []}}
+    service = _make_service(fake)
+
+    docs = [
+        IndexDocumentRequest(filename="a.md", content="aaa"),
+        IndexDocumentRequest(filename="b.md", content="bbb"),
+    ]
+    resp = asyncio.run(service.bulk_index_documents(documents=docs))
+
+    assert resp.indexed_count == 0
+    assert resp.skipped_count == 2
+    assert resp.total_chunks == 0
+
+
+def test_bulk_index_documents_empty_list():
+    """Empty document list should return zero counts."""
+    fake = FakeOpenSearchClient()
+    service = _make_service(fake)
+
+    resp = asyncio.run(service.bulk_index_documents(documents=[]))
+
+    assert resp.indexed_count == 0
+    assert resp.skipped_count == 0
+    assert resp.total_chunks == 0
+    assert resp.results == []
+
+
+def test_bulk_index_documents_respects_max_concurrency():
+    """Verify the semaphore limits concurrent execution."""
+    fake = FakeOpenSearchClient()
+    fake.search_response = {"hits": {"total": {"value": 0}, "hits": []}}
+    fake.bulk_response = {
+        "errors": False,
+        "items": [{"index": {"_id": "id-0", "status": 201}}],
+    }
+
+    peak = {"current": 0, "max": 0}
+    lock = threading.Lock()
+    original_search = fake.search
+
+    def _tracking_search(**kwargs: Any) -> dict[str, Any]:
+        with lock:
+            peak["current"] += 1
+            if peak["current"] > peak["max"]:
+                peak["max"] = peak["current"]
+        result = original_search(**kwargs)
+        with lock:
+            peak["current"] -= 1
+        return result
+
+    fake.search = _tracking_search  # type: ignore[method-assign]
+
+    stub_doc = StubDocumentService(chunks=["chunk"])
+    service = _make_service(fake, stub_doc)
+
+    docs = [IndexDocumentRequest(filename=f"doc-{i}.md", content=f"content {i}") for i in range(10)]
+    resp = asyncio.run(service.bulk_index_documents(documents=docs, max_concurrency=2))
+
+    assert resp.indexed_count == 10
+    # Peak concurrent searches should not exceed max_concurrency
+    assert peak["max"] <= 2
 
 
 # ===========================================================================
