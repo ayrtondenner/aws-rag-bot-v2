@@ -91,6 +91,11 @@ See `docs/running-tests.md` for a full DO / DON'T reference.
 │   ├── services/          # Service-layer unit tests (fake client pattern)
 │   └── routes/            # Route-layer tests (stub service + dependency override)
 ├── sagemaker-docs/        # Local markdown documentation corpus
+├── experiments/           # Jupyter notebooks for search experiments
+│   ├── helpers.py                    # Shared utilities for notebooks
+│   ├── requirements.txt             # Experiment-only Python dependencies
+│   ├── search_type_comparison.ipynb  # Experiment 1: hybrid vs text vs vector
+│   └── reranking_strategies.ipynb   # Experiment 2: reranking strategies
 ├── plans/                 # Planning/prompt documents
 ├── scripts/               # Utility/smoke-test scripts
 ├── docs/

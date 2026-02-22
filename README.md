@@ -134,6 +134,14 @@ Tests use fake/stub client patterns for fast, isolated unit testing without call
 
 > [Test structure, patterns, commands &rarr; Wiki: Testing](https://github.com/ayrtondenner/aws-rag-bot-v2/wiki/Testing)
 
+## Experiments
+
+Jupyter notebooks in `experiments/` for evaluating search strategies:
+- **Search Type Comparison** — hybrid vs text vs vector across 9 query categories
+- **Reranking Strategies** — no reranking vs RRF vs cross-encoder vs LLM-based reranking
+
+> [Experiment details, strategies, results &rarr; Wiki: Experiments](https://github.com/ayrtondenner/aws-rag-bot-v2/wiki/Experiments)
+
 ## Startup Process
 
 On startup, FastAPI's lifespan handler initialises logging, creates a shared `aiohttp` session, provisions the S3 bucket if absent (idempotent), and bulk-indexes all local `sagemaker-docs/` files into OpenSearch (idempotent — already-indexed documents are skipped). If OpenSearch is unavailable, the app still starts; documents can be indexed later via the `/opensearch/index-local-docs` endpoint.

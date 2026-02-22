@@ -3,7 +3,8 @@
     "allow": [
       "WebFetch(domain:code.visualstudio.com)",
       "Bash(ls:*)",
-      "Bash(python -m pytest:*)"
+      "Bash(python -m pytest:*)",
+      "Bash(find:*)"
     ]
   }
 }
