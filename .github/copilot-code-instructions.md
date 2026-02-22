@@ -51,7 +51,7 @@ When adding a new capability (e.g., a new external integration, a new domain), f
 - If the new service depends on other services (e.g., needs `DocumentService` for chunking), compose them here.
 - If a one-time **setup service** is needed (auto-provisioning at startup), also add `get_<domain>_setup_service()` and a corresponding class in `app/services/setup/`.
 
-**Pattern reference:** `get_s3_service()`, `get_s3_setup_service()` in `dependencies.py`.
+**Pattern reference:** `get_s3_service()`, `get_s3_setup_service()`, `get_opensearch_setup_service()` in `dependencies.py`.
 
 ### Step 5 — Routes
 

@@ -10,6 +10,7 @@ from app.services.config import OpenSearchConfig, S3Config
 from app.services.document_service import DocumentService
 from app.services.opensearch_service import OpenSearchService
 from app.services.s3_service import S3Service
+from app.services.setup.opensearch_setup_service import OpenSearchSetupService
 from app.services.setup.s3_setup_service import S3SetupService
 
 logger = logging.getLogger(__name__)
@@ -63,3 +64,12 @@ def get_http_session(request: Request) -> aiohttp.ClientSession:
 
 def get_s3_setup_service() -> S3SetupService:
     return S3SetupService(s3=get_s3_service())
+
+
+def get_opensearch_setup_service() -> OpenSearchSetupService:
+    """Factory for the OpenSearch startup setup service."""
+
+    return OpenSearchSetupService(
+        opensearch=get_opensearch_service(),
+        document_service=get_document_service(),
+    )

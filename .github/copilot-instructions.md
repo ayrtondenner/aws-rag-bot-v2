@@ -148,4 +148,4 @@ Do not leave stale references. If a file, class, route, agent, or tool was renam
 
 ## Infrastructure Setup
 
-Some services require one-time infrastructure setup (e.g., OpenSearch pipelines, index creation). These should be documented as runnable scripts or dashboard instructions in a dedicated folder (e.g., `docs/opensearch_index_setup.md`), **not** embedded in application startup code — unless the provisioning is idempotent and lightweight (like `S3SetupService` creating a bucket if absent).
+Some services require one-time infrastructure setup (e.g., OpenSearch pipelines, index creation). These should be documented as runnable scripts or dashboard instructions in a dedicated folder (e.g., `docs/opensearch_index_setup.md`), **not** embedded in application startup code — unless the provisioning is idempotent and lightweight (like `S3SetupService` creating a bucket if absent, or `OpenSearchSetupService` bulk-indexing local docs with dedup).

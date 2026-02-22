@@ -9,8 +9,11 @@ from app.routes.s3 import router as s3_router
 from app.routes.document import router as document_router
 from app.routes.opensearch import router as opensearch_router
 from app.services.dependencies import (
+    get_opensearch_setup_service,
     get_s3_setup_service,
 )
+
+logger = logging.getLogger(__name__)
 
 def _ensure_logging() -> None:
     formatter = logging.Formatter("%(levelname)s: %(message)s")
@@ -49,6 +52,19 @@ async def lifespan(app: FastAPI):
     try:
         # Provision infra.
         await get_s3_setup_service().setup_bucket()
+
+        # Bulk-index local sagemaker-docs into OpenSearch (idempotent — skips existing).
+        # Unlike S3 setup, OpenSearch failures are non-fatal: the app can still serve
+        # requests; documents can be indexed later via the /opensearch/index-local-docs endpoint.
+        try:
+            await get_opensearch_setup_service().setup_index()
+        except Exception:
+            logger.warning(
+                "OpenSearch setup failed — local docs were not indexed. "
+                "You can index them later via POST /opensearch/index-local-docs.",
+                exc_info=True,
+            )
+
         yield
     finally:
         await app.state.http_session.close()
