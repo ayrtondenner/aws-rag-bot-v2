@@ -135,3 +135,139 @@ def rank_biased_overlap(list_a: list[str], list_b: list[str], p: float = 0.9) ->
         rbo_sum += (p ** (d - 1)) * agreement
 
     return (1 - p) * rbo_sum
+
+
+# ------------------------------------------------------------------
+# Index management helpers (used by chunking & splitter experiments)
+# ------------------------------------------------------------------
+
+
+def get_index_stats() -> dict[str, Any]:
+    """Get OpenSearch index statistics.
+
+    Returns:
+        Parsed JSON with index_name, doc_count, status.
+    """
+    resp = requests.get(f"{BASE_URL}/opensearch/index/stats", timeout=10)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def get_indexed_filenames() -> list[str]:
+    """Fetch all indexed document filenames from the API.
+
+    Returns:
+        Sorted list of filenames currently in the OpenSearch index.
+    """
+    resp = requests.get(f"{BASE_URL}/opensearch/documents", timeout=30)
+    resp.raise_for_status()
+    return resp.json().get("filenames", [])
+
+
+def delete_documents_by_filename(filename: str) -> int:
+    """Delete all chunks for a specific filename.
+
+    Args:
+        filename: The document filename whose chunks should be deleted.
+
+    Returns:
+        Number of chunks deleted.
+    """
+    resp = requests.delete(
+        f"{BASE_URL}/opensearch/documents",
+        params={"filename": filename},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    return resp.json().get("deleted_count", 0)
+
+
+def clear_index() -> dict[str, int]:
+    """Delete ALL documents from the OpenSearch index.
+
+    Fetches the list of indexed filenames, then deletes each one.
+
+    Returns:
+        Dict with 'filenames_deleted' and 'total_chunks_deleted'.
+    """
+    filenames = get_indexed_filenames()
+    total_deleted = 0
+    for fname in filenames:
+        total_deleted += delete_documents_by_filename(fname)
+    return {"filenames_deleted": len(filenames), "total_chunks_deleted": total_deleted}
+
+
+def reindex_local_docs(
+    chunk_size: int = 500,
+    chunk_overlap: int = 50,
+    max_concurrency: int = 5,
+) -> dict[str, Any]:
+    """Trigger bulk re-indexing of all local sagemaker-docs with given params.
+
+    Args:
+        chunk_size: Target chunk size in characters.
+        chunk_overlap: Overlap between chunks.
+        max_concurrency: Parallel indexing limit.
+
+    Returns:
+        Parsed JSON response from the bulk-index endpoint.
+    """
+    resp = requests.post(
+        f"{BASE_URL}/opensearch/index-local-docs",
+        params={
+            "chunk_size": chunk_size,
+            "chunk_overlap": chunk_overlap,
+            "max_concurrency": max_concurrency,
+        },
+        timeout=600,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def index_single_document(
+    filename: str,
+    content: str,
+    chunk_size: int = 500,
+    chunk_overlap: int = 50,
+) -> dict[str, Any]:
+    """Index a single document via the API.
+
+    Args:
+        filename: Document filename (used for dedup).
+        content: Full text content.
+        chunk_size: Target chunk size.
+        chunk_overlap: Overlap between chunks.
+
+    Returns:
+        Parsed JSON response.
+    """
+    resp = requests.post(
+        f"{BASE_URL}/opensearch/index",
+        json={"filename": filename, "content": content},
+        params={"chunk_size": chunk_size, "chunk_overlap": chunk_overlap},
+        timeout=60,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def run_query_suite(
+    queries: list[str],
+    search_type: str = "hybrid",
+    size: int = 10,
+) -> dict[str, dict[str, Any]]:
+    """Run a list of queries and return results keyed by query text.
+
+    Args:
+        queries: List of query strings.
+        search_type: Search type to use for all queries.
+        size: Maximum results per query.
+
+    Returns:
+        Dict mapping query -> SearchResponse dict.
+    """
+    results: dict[str, dict[str, Any]] = {}
+    for query in queries:
+        results[query] = search(query, search_type=search_type, size=size)
+    return results
