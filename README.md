@@ -59,6 +59,8 @@ graph LR
 Hybrid search combining BM25 text matching and neural vector search over 500-character chunks (50-char overlap) embedded with Titan V2. Documents are ingested from local `sagemaker-docs/` files (336 markdown docs) or via API. The OpenSearch ingest pipeline auto-embeds content; the search pipeline normalises and weights results (0.3 BM25, 0.7 neural).
 
 > [Full RAG documentation, OpenSearch setup, pipelines &rarr; Wiki: RAG and OpenSearch](https://github.com/ayrtondenner/aws-rag-bot-v2/wiki/RAG-and-OpenSearch)
+>
+> **One-time setup**: Run `scripts/setup_opensearch.py` to provision the full AOSS infrastructure (IAM roles, collection, pipelines, index) automatically. See `docs/opensearch_index_setup.md` for details.
 
 ## Google ADK Agent
 
