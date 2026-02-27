@@ -26,11 +26,17 @@ import os
 import sys
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Optional
 
 import boto3
+from dotenv import load_dotenv
 from opensearchpy import OpenSearch, RequestsHttpConnection
 from requests_aws4auth import AWS4Auth
+
+# Load .env from project root (supports AWS credentials, collection name, etc.)
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+load_dotenv(_PROJECT_ROOT / ".env")
 
 logger = logging.getLogger(__name__)
 
@@ -444,21 +450,29 @@ class AossSetupRunner:
                 "Data access policy exists, updating principals: %s",
                 self._config.data_access_policy_name,
             )
-            existing = self._aoss.get_access_policy(
-                name=self._config.data_access_policy_name,
-                type="data",
-            )
-            version = existing["accessPolicyDetail"]["policyVersion"]
-            self._aoss.update_access_policy(
-                name=self._config.data_access_policy_name,
-                type="data",
-                policy=policy_body,
-                policyVersion=version,
-                description=(
-                    f"Data access policy for {self._config.collection_name}"
-                ),
-            )
-            logger.info("Updated data access policy with current principals.")
+            try:
+                existing = self._aoss.get_access_policy(
+                    name=self._config.data_access_policy_name,
+                    type="data",
+                )
+                version = existing["accessPolicyDetail"]["policyVersion"]
+                self._aoss.update_access_policy(
+                    name=self._config.data_access_policy_name,
+                    type="data",
+                    policy=policy_body,
+                    policyVersion=version,
+                    description=(
+                        f"Data access policy for "
+                        f"{self._config.collection_name}"
+                    ),
+                )
+                logger.info(
+                    "Updated data access policy with current principals.",
+                )
+            except self._aoss.exceptions.ValidationException:
+                logger.info(
+                    "Data access policy already up-to-date (skipping).",
+                )
 
     # ------------------------------------------------------------------
     # Phase 3: OpenSearch resources (via data-plane API)
@@ -887,28 +901,65 @@ class AossSetupRunner:
             ),
         }
 
-        resp = client.index(index=self._config.index_name, body=test_doc)
-        doc_id = resp["_id"]
-        logger.info("Test document indexed: %s", doc_id)
+        test_filename = test_doc["filename"]
+        client.index(index=self._config.index_name, body=test_doc)
+        logger.info("Test document indexed: %s", test_filename)
 
-        # Wait for the ingest pipeline to generate the embedding
-        time.sleep(3)
-
-        resp = client.get(index=self._config.index_name, id=doc_id)
-        source = resp.get("_source", {})
-        embedding = source.get(self._config.embedding_field)
-        if embedding and len(embedding) > 0:
+        # AOSS has eventual consistency — retry search until the doc appears
+        hits: list[dict[str, Any]] = []
+        for attempt in range(1, 7):
             logger.info(
-                "PASS: Embedding populated (%d dimensions)", len(embedding),
+                "Waiting for document to become searchable "
+                "(attempt %d/6)...",
+                attempt,
             )
+            time.sleep(10)
+
+            resp = client.search(
+                index=self._config.index_name,
+                body={
+                    "query": {"term": {"filename": test_filename}},
+                    "size": 1,
+                },
+            )
+            hits = resp.get("hits", {}).get("hits", [])
+            if hits:
+                break
+
+        if hits:
+            source = hits[0].get("_source", {})
+            embedding = source.get(self._config.embedding_field)
+            if embedding and len(embedding) > 0:
+                logger.info(
+                    "PASS: Embedding populated (%d dimensions)",
+                    len(embedding),
+                )
+            else:
+                logger.warning(
+                    "WARN: Embedding NOT populated — check ingest pipeline "
+                    "and model deployment.",
+                )
         else:
             logger.warning(
-                "WARN: Embedding NOT populated — check ingest pipeline "
-                "and model deployment.",
+                "WARN: Test document not found after retries. "
+                "This may be an eventual consistency delay — "
+                "try searching manually in a few seconds.",
             )
 
-        client.delete(index=self._config.index_name, id=doc_id)
-        logger.info("Test document cleaned up.")
+        # Clean up by filename (non-fatal if doc not yet visible)
+        try:
+            client.delete_by_query(
+                index=self._config.index_name,
+                body={"query": {"term": {"filename": test_filename}}},
+            )
+            logger.info("Test document cleaned up.")
+        except Exception:
+            logger.info(
+                "Could not clean up test doc (may not be visible yet). "
+                "Clean up manually: DELETE /sagemaker-docs/_doc "
+                "where filename='%s'",
+                test_filename,
+            )
 
     # ------------------------------------------------------------------
     # Public accessors
