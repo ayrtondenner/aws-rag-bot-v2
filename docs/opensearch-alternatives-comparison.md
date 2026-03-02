@@ -106,6 +106,41 @@ With Fargate Spot (scale-to-zero):
 | Tests (unit + integration) | 1–2 days |
 | **Total** | **7–11 days** |
 
+### Terraform Infrastructure
+
+Terraform resources required for Option A:
+
+| Resource | Terraform type | Purpose |
+|----------|---------------|---------|
+| S3 bucket | `aws_s3_bucket` + `aws_s3_bucket_versioning` | Store FAISS + BM25 index artifacts |
+| S3 bucket policy | `aws_s3_bucket_policy` | Restrict access to Lambda/Fargate role only |
+| **Lambda variant** | | |
+| Lambda function | `aws_lambda_function` | Query-time hybrid search |
+| Lambda IAM role | `aws_iam_role` + `aws_iam_role_policy` | S3 read + Bedrock invoke (if reranking) |
+| API Gateway | `aws_apigatewayv2_api` | HTTP endpoint for Lambda |
+| CloudWatch log group | `aws_cloudwatch_log_group` | Logs + retention policy |
+| **Fargate variant** | | |
+| ECS cluster | `aws_ecs_cluster` | Fargate cluster |
+| ECS task definition | `aws_ecs_task_definition` | FastAPI container spec |
+| ECS service | `aws_ecs_service` | Scale-to-zero service |
+| Auto Scaling target + policy | `aws_appautoscaling_target` + `aws_appautoscaling_policy` | Scale to/from zero based on ALB requests |
+| ALB + target group | `aws_lb` + `aws_lb_target_group` | Load balancer for Fargate tasks |
+| IAM task role | `aws_iam_role` + `aws_iam_role_policy` | S3 read + Bedrock invoke |
+| ECR repository | `aws_ecr_repository` | Docker image for FastAPI app |
+| VPC (if not existing) | `aws_vpc`, `aws_subnet`, etc. | Network for Fargate tasks |
+
+**Terraform complexity**: **Medium** — 10–15 resources (Lambda variant) or 15–25
+resources (Fargate variant). Standard AWS patterns with well-documented Terraform
+modules available. All resources are pay-per-use, so Terraform manages cost controls
+(concurrency caps, lifecycle rules, scaling limits) effectively.
+
+**Cost control via Terraform**:
+- S3 lifecycle rules to auto-expire old index versions
+- Lambda reserved concurrency to cap costs
+- Fargate auto-scaling min/max to prevent runaway scaling
+- CloudWatch billing alarms as a Terraform resource
+- All resources tagged for cost allocation tracking
+
 ### Pros / Cons
 
 | Pros | Cons |
@@ -115,6 +150,7 @@ With Fargate Spot (scale-to-zero):
 | FAISS + BM25 artifacts fit entirely in memory (<10 MB) | Index updates require re-building and re-uploading artifacts |
 | No managed service lock-in | No built-in dashboard or monitoring (must add CloudWatch) |
 | Can run locally with identical code (same FAISS/BM25) | Need to handle artifact versioning and cache invalidation |
+| Terraform state is simple; easy to destroy/recreate | Fargate variant needs more Terraform resources (VPC, ALB, ECS) |
 
 ---
 
@@ -164,6 +200,39 @@ With Fargate Spot (scale-to-zero):
 | Tests (unit + integration with test database) | 1–2 days |
 | **Total** | **7–11 days** |
 
+### Terraform Infrastructure
+
+Terraform resources required for Option B:
+
+| Resource | Terraform type | Purpose |
+|----------|---------------|---------|
+| Aurora cluster | `aws_rds_cluster` | Serverless v2 PostgreSQL cluster |
+| Aurora instance | `aws_rds_cluster_instance` | Serverless v2 instance (min 0.5 ACU) |
+| DB subnet group | `aws_db_subnet_group` | Subnet placement for Aurora |
+| Security group | `aws_security_group` + `aws_security_group_rule` | Ingress/egress rules for DB access |
+| VPC (if not existing) | `aws_vpc`, `aws_subnet`, `aws_internet_gateway` | Private network for Aurora |
+| IAM auth role | `aws_iam_role` + `aws_iam_role_policy` | IAM-based DB authentication |
+| Secrets Manager | `aws_secretsmanager_secret` | DB credentials (if not using IAM auth) |
+| Parameter group | `aws_rds_cluster_parameter_group` | Enable `pgvector` extension, tuning |
+| CloudWatch alarms | `aws_cloudwatch_metric_alarm` | ACU usage, connection count, storage |
+| Backup config | (built into `aws_rds_cluster`) | Automated backups, retention period |
+
+**Terraform complexity**: **High** — 15–25 resources. Aurora requires VPC networking
+(subnets, route tables, NAT gateways), security groups, parameter groups, and
+optionally Secrets Manager. The `pgvector` extension must be enabled via a custom
+parameter group. Database schema (tables, indexes, tsvector columns) must be managed
+separately via SQL migrations (Alembic or Flyway), not Terraform.
+
+**Cost control via Terraform**:
+- `serverlessv2_scaling_configuration` block to set min/max ACU (min 0.5, max configurable)
+- Storage auto-scaling with a max limit
+- CloudWatch billing alarms for ACU-hour spend
+- `deletion_protection` to prevent accidental teardown
+- All resources tagged for cost allocation tracking
+- **Caveat**: Even with Terraform controlling the min ACU, the ~US$44/month floor
+  (based on 0.5 ACU minimum × 730 hrs × US$0.12/ACU-hr in us-east-1, as of March 2026)
+  is unavoidable — Aurora Serverless v2 cannot scale to 0 ACU
+
 ### Pros / Cons
 
 | Pros | Cons |
@@ -173,6 +242,8 @@ With Fargate Spot (scale-to-zero):
 | Bedrock Knowledge Bases supports Aurora pgvector natively | Requires VPC configuration, security groups, IAM auth |
 | Easy to add metadata filtering, joins, analytics | pgvector HNSW index rebuild on inserts can be slow for large batches |
 | Scales well to 100k+ vectors with HNSW | More operational complexity than a serverless function |
+| Terraform can enforce ACU caps and backup policies | Most complex Terraform config of all options (VPC + DB + IAM) |
+| Schema migrations (Alembic) version-controlled alongside Terraform | DB schema is not managed by Terraform — requires separate migration tool |
 
 ---
 
@@ -211,6 +282,23 @@ With Fargate Spot (scale-to-zero):
 | Tests | 1 day |
 | **Total** | **4–5 days** |
 
+### Terraform Infrastructure
+
+Option C runs entirely locally — **no Terraform resources are required**.
+
+However, if the local search backend is used in a CI/CD pipeline, you may optionally
+provision:
+
+| Resource | Terraform type | Purpose |
+|----------|---------------|---------|
+| S3 bucket (optional) | `aws_s3_bucket` | Store pre-built index artifacts for CI cache |
+| CodeBuild project (optional) | `aws_codebuild_project` | Run integration tests with local search |
+
+**Terraform complexity**: **None** — zero AWS resources in the default setup.
+The optional CI resources add 2–3 Terraform resources if needed.
+
+**Cost control via Terraform**: N/A — no cloud resources, no cost.
+
 ### Pros / Cons
 
 | Pros | Cons |
@@ -219,6 +307,7 @@ With Fargate Spot (scale-to-zero):
 | Fast feedback loop (no network calls for search) | Data lives on local disk only |
 | Great for CI/CD test pipelines | SQLite doesn't support concurrent writes well |
 | Same FAISS code as Option A (shared implementation) | Must mock or skip embedding calls in offline mode |
+| No Terraform needed — simplest to set up and tear down | Cannot be promoted to production without re-architecture |
 
 ---
 
@@ -237,6 +326,9 @@ With Fargate Spot (scale-to-zero):
 | **Dev/test experience** | Run locally with same FAISS/BM25 code | Need local PostgreSQL + pgvector | ✅ Best — fully local, no AWS |
 | **Index updates** | Rebuild + re-upload to S3 | SQL INSERT/UPDATE — instant | Rebuild local files |
 | **Monitoring** | CloudWatch + custom metrics | Aurora CloudWatch metrics + Performance Insights | Logs only |
+| **Terraform complexity** | Medium (10–15 resources Lambda; 15–25 Fargate) | High (15–25 resources + VPC networking + DB-specific config) | None (0 resources) |
+| **Terraform cost control** | ✅ Lifecycle rules, concurrency caps, scaling limits | ⚠️ ACU caps help but ~$44/mo floor unavoidable | N/A |
+| **Terraform destroy/recreate** | ✅ Fast — stateless resources, index rebuilt from S3 | ⚠️ Slow — DB deletion loses data; need backup/restore | N/A |
 
 ---
 
@@ -271,6 +363,13 @@ With Fargate Spot (scale-to-zero):
    artifacts still fit in memory (even 200k chunks at 1024 dims ≈ 800 MB). Beyond
    that, migrating to Aurora pgvector (Option B) becomes justified because the
    query volume would amortize the fixed cost.
+
+6. **Terraform manageability**: Option A's infrastructure is composed of stateless,
+   pay-per-use AWS resources (S3 bucket, Lambda/Fargate, IAM roles) that are
+   straightforward to define in Terraform. The entire stack can be destroyed and
+   recreated in minutes with no data loss (index artifacts are rebuilt from source
+   docs). This makes it ideal for cost control — `terraform destroy` truly stops
+   all billing, unlike Aurora where the 0.5 ACU floor runs continuously.
 
 ### Suggested Variant: Fargate Spot with Scale-to-Zero
 
@@ -307,6 +406,24 @@ query).
 4. Update shared tools, agent, and MCP wrappers to use the new backend
 5. Integration tests with mocked S3 (moto or fake)
 
+### Phase 2.5 — Terraform Infrastructure — ~3 days
+
+1. Create `infra/` directory with Terraform modules:
+   - `infra/modules/s3/` — S3 bucket with versioning + lifecycle rules
+   - `infra/modules/lambda/` or `infra/modules/fargate/` — compute layer
+   - `infra/modules/iam/` — IAM roles and policies
+   - `infra/modules/monitoring/` — CloudWatch log groups + billing alarms
+2. Create environment-specific variable files (`infra/envs/dev.tfvars`,
+   `infra/envs/prod.tfvars`) with cost-control settings:
+   - Lambda reserved concurrency / Fargate max task count
+   - S3 lifecycle expiration days
+   - CloudWatch billing alarm thresholds
+3. Add Terraform state backend config (S3 + DynamoDB for state locking)
+4. Create a `terraform plan` CI step (GitHub Actions) to preview infrastructure
+   changes on PRs; optionally integrate [Infracost](https://www.infracost.io/) to
+   estimate cost impact of Terraform changes before merge
+5. Document Terraform usage in `README.md` and `docs/`
+
 ### Phase 3 — Migrate and Deprecate OpenSearch — ~2 days
 
 1. Run relevance comparison (same queries, compare top-K results vs. OpenSearch)
@@ -337,11 +454,15 @@ routes, agent tools, and MCP wrappers require minimal or no changes.
 
 | Risk | Mitigation |
 |------|-----------|
-| FAISS index corruption on S3 | Versioned S3 bucket + checksum validation on download |
+| FAISS index corruption on S3 | Versioned S3 bucket (Terraform-managed) + checksum validation on download |
 | Cold start latency (Fargate) | Pre-warm with CloudWatch scheduled event; or keep 1 task warm |
 | BM25 quality differs from OpenSearch | Side-by-side relevance eval before cutover (Phase 3 step 1) |
 | Embedding model change breaks index | Store model ID in index metadata; rebuild script validates |
 | Concurrent index rebuilds | S3 object locking or atomic rename pattern |
+| Unexpected cloud cost spikes | Terraform-managed CloudWatch billing alarms + Lambda concurrency limits / Fargate max task caps |
+| Infrastructure drift (manual console changes) | Enforce Terraform-only changes via `terraform plan` in CI; enable drift detection |
+| Terraform state corruption | Remote state in S3 with DynamoDB locking; state file versioning enabled |
+| Accidental `terraform destroy` in prod | Separate state files and backend configurations per environment; IAM policies restricting destroy in prod; consider Terraform Cloud or Spacelift for approval workflows |
 
 ---
 
@@ -353,5 +474,9 @@ routes, agent tools, and MCP wrappers require minimal or no changes.
 - [FAISS](https://github.com/facebookresearch/faiss) — Facebook AI Similarity Search
 - [rank_bm25](https://github.com/dorianbrown/rank_bm25) — Python BM25 implementation
 - [SQLite FTS5](https://www.sqlite.org/fts5.html) — Full-text search extension
+- [Terraform AWS Provider](https://registry.terraform.io/providers/hashicorp/aws/latest/docs) — AWS resource provisioning
+- [Terraform AWS Lambda Module](https://registry.terraform.io/modules/terraform-aws-modules/lambda/aws/latest) — Community Lambda module
+- [Terraform AWS ECS Module](https://registry.terraform.io/modules/terraform-aws-modules/ecs/aws/latest) — Community ECS/Fargate module
+- [Terraform AWS RDS Aurora Module](https://registry.terraform.io/modules/terraform-aws-modules/rds-aurora/aws/latest) — Community Aurora module
 - Current index config: `docs/opensearch_index_setup.md`
 - Current hybrid search weights: 0.3 BM25 + 0.7 neural (arithmetic mean normalization)
