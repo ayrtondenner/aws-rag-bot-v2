@@ -420,8 +420,13 @@ query).
    - CloudWatch billing alarm thresholds
 3. Add Terraform state backend config (S3 + DynamoDB for state locking)
 4. Create a `terraform plan` CI step (GitHub Actions) to preview infrastructure
-   changes on PRs; optionally integrate [Infracost](https://www.infracost.io/) to
-   estimate cost impact of Terraform changes before merge
+   changes on PRs; integrate [Infracost](https://www.infracost.io/) to estimate
+   cost impact of Terraform changes before merge:
+   - **CI**: Add Infracost GitHub Actions step to post cost diff comments on PRs
+   - **Local dev**: Install the [Infracost VSCode extension](https://github.com/infracost/vscode-infracost)
+     for real-time cost estimates directly in the editor while writing Terraform
+     code — shows per-resource monthly cost inline, without needing to run
+     `terraform plan` or push to CI
 5. Document Terraform usage in `README.md` and `docs/`
 
 ### Phase 3 — Migrate and Deprecate OpenSearch — ~2 days
@@ -478,5 +483,7 @@ routes, agent tools, and MCP wrappers require minimal or no changes.
 - [Terraform AWS Lambda Module](https://registry.terraform.io/modules/terraform-aws-modules/lambda/aws/latest) — Community Lambda module
 - [Terraform AWS ECS Module](https://registry.terraform.io/modules/terraform-aws-modules/ecs/aws/latest) — Community ECS/Fargate module
 - [Terraform AWS RDS Aurora Module](https://registry.terraform.io/modules/terraform-aws-modules/rds-aurora/aws/latest) — Community Aurora module
+- [Infracost](https://www.infracost.io/) — Cloud cost estimates for Terraform in CI/CD
+- [Infracost VSCode Extension](https://github.com/infracost/vscode-infracost) — Real-time Terraform cost estimates in the editor
 - Current index config: `docs/opensearch_index_setup.md`
 - Current hybrid search weights: 0.3 BM25 + 0.7 neural (arithmetic mean normalization)
