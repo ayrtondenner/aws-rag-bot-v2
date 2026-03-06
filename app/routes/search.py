@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from starlette import status
 
-from app.models.opensearch import (
+from app.models.search import (
     BulkIndexRequest,
     BulkIndexResponse,
     DeleteByFilenameResponse,
@@ -15,11 +15,11 @@ from app.models.opensearch import (
     SearchRequest,
     SearchResponse,
 )
-from app.services.dependencies import get_document_service, get_opensearch_service
+from app.services.dependencies import get_document_service, get_search_service
 from app.services.document_service import DocumentService
-from app.services.opensearch_service import OpenSearchService
+from app.services.search_service import SearchService
 
-router = APIRouter(prefix="/opensearch", tags=["opensearch"])
+router = APIRouter(prefix="/search", tags=["search"])
 
 
 # ------------------------------------------------------------------
@@ -59,16 +59,16 @@ async def index_document(
     ),
     chunk_size: int = Query(default=500, ge=1, description="Target chunk size in characters."),
     chunk_overlap: int = Query(default=50, ge=0, description="Overlap between chunks."),
-    opensearch: OpenSearchService = Depends(get_opensearch_service),
+    search_svc: SearchService = Depends(get_search_service),
 ) -> IndexDocumentResponse:
-    """Index a single document into OpenSearch.
+    """Index a single document into the search index.
 
     The document is split into overlapping chunks and each chunk is indexed
     separately. If the filename is already indexed, the operation is skipped.
     """
 
     try:
-        return await opensearch.index_document(
+        return await search_svc.index_document(
             filename=payload.filename,
             content=payload.content,
             chunk_size=chunk_size,
@@ -103,12 +103,12 @@ async def index_document(
 )
 async def bulk_index_documents(
     payload: BulkIndexRequest = Body(...),
-    opensearch: OpenSearchService = Depends(get_opensearch_service),
+    search_svc: SearchService = Depends(get_search_service),
 ) -> BulkIndexResponse:
     """Bulk-index multiple documents. Already-indexed filenames are skipped."""
 
     try:
-        return await opensearch.bulk_index_documents(
+        return await search_svc.bulk_index_documents(
             documents=payload.documents,
             chunk_size=payload.chunk_size,
             chunk_overlap=payload.chunk_overlap,
@@ -141,7 +141,7 @@ async def index_local_docs(
     chunk_size: int = Query(default=500, ge=1, description="Target chunk size in characters."),
     chunk_overlap: int = Query(default=50, ge=0, description="Overlap between chunks."),
     max_concurrency: int = Query(default=5, ge=1, le=20, description="Maximum documents indexed in parallel."),
-    opensearch: OpenSearchService = Depends(get_opensearch_service),
+    search_svc: SearchService = Depends(get_search_service),
     documents: DocumentService = Depends(get_document_service),
 ) -> BulkIndexResponse:
     """Read ALL files from the local ``sagemaker-docs/`` folder and bulk-index them.
@@ -164,7 +164,7 @@ async def index_local_docs(
     if not docs:
         return BulkIndexResponse(total_chunks=0, indexed_count=0, skipped_count=0, results=[])
 
-    return await opensearch.bulk_index_documents(
+    return await search_svc.bulk_index_documents(
         documents=docs,
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
@@ -217,12 +217,12 @@ async def search(
             {"query": "SageMaker endpoint configuration", "size": 5, "search_type": "hybrid"},
         ],
     ),
-    opensearch: OpenSearchService = Depends(get_opensearch_service),
+    search_svc: SearchService = Depends(get_search_service),
 ) -> SearchResponse:
-    """Search indexed documents using hybrid (BM25 + neural), text-only, or vector-only."""
+    """Search indexed documents using hybrid (BM25 + vector), text-only, or vector-only."""
 
     try:
-        return await opensearch.search(
+        return await search_svc.search(
             query=payload.query,
             size=payload.size,
             search_type=payload.search_type,
@@ -255,11 +255,11 @@ async def search(
     },
 )
 async def index_stats(
-    opensearch: OpenSearchService = Depends(get_opensearch_service),
+    search_svc: SearchService = Depends(get_search_service),
 ) -> IndexStatsResponse:
-    """Return basic statistics for the OpenSearch index."""
+    """Return basic statistics for the search index."""
 
-    return await opensearch.get_index_stats()
+    return await search_svc.get_index_stats()
 
 
 @router.get(
@@ -284,11 +284,11 @@ async def index_stats(
     },
 )
 async def list_indexed_documents(
-    opensearch: OpenSearchService = Depends(get_opensearch_service),
+    search_svc: SearchService = Depends(get_search_service),
 ) -> IndexedDocumentsResponse:
     """Return a deduplicated list of all indexed document filenames."""
 
-    filenames = await opensearch.list_indexed_documents()
+    filenames = await search_svc.list_indexed_documents()
     return IndexedDocumentsResponse(count=len(filenames), filenames=filenames)
 
 
@@ -314,12 +314,12 @@ async def document_exists(
         description="Document filename to check.",
         examples=["amazon-sagemaker-toolkits.md"],
     ),
-    opensearch: OpenSearchService = Depends(get_opensearch_service),
+    search_svc: SearchService = Depends(get_search_service),
 ) -> DocumentExistsResponse:
     """Check whether a document filename has already been indexed."""
 
     try:
-        exists = await opensearch.document_exists(filename=filename)
+        exists = await search_svc.document_exists(filename=filename)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -347,12 +347,12 @@ async def document_exists(
 )
 async def delete_document(
     doc_id: str,
-    opensearch: OpenSearchService = Depends(get_opensearch_service),
+    search_svc: SearchService = Depends(get_search_service),
 ) -> dict[str, bool]:
-    """Delete a single OpenSearch document (chunk) by its ID."""
+    """Delete a single document (chunk) by its ID."""
 
     try:
-        deleted = await opensearch.delete_document(doc_id=doc_id)
+        deleted = await search_svc.delete_document(doc_id=doc_id)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -384,12 +384,12 @@ async def delete_documents_by_filename(
         description="Source document filename whose chunks should be deleted.",
         examples=["amazon-sagemaker-toolkits.md"],
     ),
-    opensearch: OpenSearchService = Depends(get_opensearch_service),
+    search_svc: SearchService = Depends(get_search_service),
 ) -> DeleteByFilenameResponse:
     """Delete all indexed chunks belonging to a given source filename."""
 
     try:
-        count = await opensearch.delete_documents_by_filename(filename=filename)
+        count = await search_svc.delete_documents_by_filename(filename=filename)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 

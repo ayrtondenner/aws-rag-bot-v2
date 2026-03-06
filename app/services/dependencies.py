@@ -6,12 +6,12 @@ from pathlib import Path
 import aiohttp
 from fastapi import FastAPI, Request
 
-from app.services.config import OpenSearchConfig, S3Config
+from app.services.config import S3Config, SearchConfig
 from app.services.document_service import DocumentService
-from app.services.opensearch_service import OpenSearchService
 from app.services.s3_service import S3Service
-from app.services.setup.opensearch_setup_service import OpenSearchSetupService
+from app.services.search_service import SearchService
 from app.services.setup.s3_setup_service import S3SetupService
+from app.services.setup.search_setup_service import SearchSetupService
 
 logger = logging.getLogger(__name__)
 
@@ -36,15 +36,15 @@ def get_document_service() -> DocumentService:
     return DocumentService()
 
 
-def get_opensearch_service() -> OpenSearchService:
-    """FastAPI dependency provider for an OpenSearchService instance.
+def get_search_service() -> SearchService:
+    """FastAPI dependency provider for a SearchService instance.
 
     Returns:
-        An OpenSearchService configured from environment variables.
+        A SearchService configured from environment variables.
     """
 
-    return OpenSearchService(
-        config=OpenSearchConfig.from_env(),
+    return SearchService(
+        config=SearchConfig.from_env(),
         document_service=get_document_service(),
     )
 
@@ -66,10 +66,12 @@ def get_s3_setup_service() -> S3SetupService:
     return S3SetupService(s3=get_s3_service())
 
 
-def get_opensearch_setup_service() -> OpenSearchSetupService:
-    """Factory for the OpenSearch startup setup service."""
+def get_search_setup_service() -> SearchSetupService:
+    """Factory for the search startup setup service."""
 
-    return OpenSearchSetupService(
-        opensearch=get_opensearch_service(),
+    config = SearchConfig.from_env()
+    return SearchSetupService(
+        search=get_search_service(),
         document_service=get_document_service(),
+        config=config,
     )

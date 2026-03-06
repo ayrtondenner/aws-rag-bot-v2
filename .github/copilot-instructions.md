@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-This is a **RAG (Retrieval-Augmented Generation) backend** built with **FastAPI**, backed by **AWS S3**, **Amazon OpenSearch** (hybrid search), and an **agent layer** (Google ADK + MCP). The codebase follows a strict layered architecture. All new functionality must follow the step-by-step implementation workflow described in `.github/copilot-code-instructions.md`.
+This is a **RAG (Retrieval-Augmented Generation) backend** built with **FastAPI**, backed by **AWS S3**, **Lambda** (FAISS + BM25 hybrid search), and an **agent layer** (Google ADK + MCP). The codebase follows a strict layered architecture. All new functionality must follow the step-by-step implementation workflow described in `.github/copilot-code-instructions.md`.
 
 ## Tech Stack
 
@@ -10,11 +10,14 @@ This is a **RAG (Retrieval-Augmented Generation) backend** built with **FastAPI*
 - **FastAPI** — HTTP API framework
 - **Pydantic v2** — request/response models, validation
 - **aioboto3 / botocore** — async AWS SDK (S3)
-- **opensearch-py** — OpenSearch data-plane client (sync, wrapped with `asyncio.to_thread()`)
+- **boto3** — AWS SDK (Lambda invoke, S3 operations for search)
+- **faiss-cpu** — FAISS vector similarity search
+- **rank-bm25** — BM25Okapi lexical search
 - **LangChain** — text splitting (`RecursiveCharacterTextSplitter`), embeddings (`BedrockEmbeddings`)
 - **Google ADK** — agent framework (`Agent`, `FunctionTool`, `LiteLlm`, `Runner`)
 - **FastMCP** — MCP server exposing tools as resources
 - **LiteLLM** — LLM routing (Bedrock Claude Sonnet 4)
+- **Terraform** — infrastructure as code (Lambda, S3, IAM)
 - **pytest** — testing (with `FastAPI TestClient`, fake clients, stub services)
 - **ruff** — linting
 
@@ -34,7 +37,7 @@ Invoke tools via their direct executable paths:
 
 # Tests
 .\.venv\Scripts\pytest.exe tests/ -v
-.\.venv\Scripts\pytest.exe tests/routes/test_opensearch_routes.py -v
+.\.venv\Scripts\pytest.exe tests/routes/test_search_routes.py -v
 ```
 
 ### From Claude Code / automated tools (bash shell on Windows)
@@ -79,13 +82,18 @@ See `docs/running-tests.md` for a full DO / DON'T reference.
 │   ├── __init__.py            # Cross-cutting helpers (transfer_to_root, DEFAULT_SAGEMAKER_DOCS_BUCKET_NAME)
 │   ├── s3_tools.py            # S3 tool functions + build_s3_tools()
 │   ├── document_tools.py      # Local-document tool functions + build_document_tools()
-│   └── opensearch_tools.py    # OpenSearch tool functions + build_opensearch_tools()
+│   └── search_tools.py        # Search tool functions + build_search_tools()
 ├── mcp_server/
 │   ├── __init__.py            # FastMCP instance (mcp = FastMCP(...))
 │   ├── main.py                # MCP server entry point (port 8002)
 │   ├── s3_tools.py            # MCP resource wrappers for S3
 │   ├── document_tools.py      # MCP resource wrappers for local documents
-│   └── opensearch_tools.py    # MCP resource wrappers for OpenSearch
+│   └── search_tools.py        # MCP resource wrappers for search
+├── lambda_search/
+│   ├── __init__.py
+│   ├── handler.py             # Lambda function: FAISS + BM25 hybrid search
+│   └── requirements.txt       # Lambda-specific dependencies
+├── infra/                     # Terraform infrastructure (Lambda, S3, IAM)
 ├── tests/
 │   ├── conftest.py        # Shared pytest fixtures (FastAPI test app, TestClient)
 │   ├── services/          # Service-layer unit tests (fake client pattern)
@@ -97,10 +105,11 @@ See `docs/running-tests.md` for a full DO / DON'T reference.
 │   ├── search_type_comparison.ipynb  # Experiment 1: hybrid vs text vs vector
 │   └── reranking_strategies.ipynb   # Experiment 2: reranking strategies
 ├── plans/                 # Planning/prompt documents
-├── scripts/               # Utility/smoke-test scripts
-│   └── setup_opensearch.py           # Automated AOSS infrastructure setup (IAM, policies, collection, index)
+├── scripts/
+│   └── build_search_index.py       # Build FAISS+BM25 artifacts and upload to S3
+├── archive/               # Archived scripts (e.g. former OpenSearch setup)
 ├── docs/
-│   └── opensearch_index_setup.md     # OpenSearch setup guide (automated + manual reference)
+│   └── search_index_setup.md       # Search index setup guide
 ├── wiki/                  # GitHub Wiki (git submodule)
 ├── CLAUDE.md                  # Claude Code entry point (points to Copilot instruction files)
 ├── main.py                # FastAPI app entry point (lifespan, routers)
@@ -129,8 +138,11 @@ New services should load configuration from environment variables. Document new 
 
 - `S3_BUCKET_NAME` — Default S3 bucket
 - `AWS_REGION` / `AWS_DEFAULT_REGION` — AWS region
-- `OPENSEARCH_ENDPOINT` — OpenSearch collection endpoint
-- `OPENSEARCH_INDEX_NAME` — OpenSearch index name
+- `SEARCH_LAMBDA_FUNCTION_NAME` — Lambda function name for search
+- `SEARCH_INDEX_BUCKET` — S3 bucket for FAISS/BM25 index artifacts
+- `SEARCH_INDEX_PREFIX` — S3 key prefix for index artifacts
+- `BM25_WEIGHT` / `VECTOR_WEIGHT` — Hybrid search fusion weights
+- `SEARCH_LAMBDA_TIMEOUT_SECONDS` — Lambda invoke timeout
 - `BEDROCK_EMBEDDING_MODEL_ID` — Bedrock embedding model
 - `BEDROCK_EMBEDDING_DIM` — Embedding dimensions (default: 1024)
 - `BEDROCK_INFERENCE_PROFILE_ID` — LLM inference profile
@@ -143,7 +155,7 @@ New services should load configuration from environment variables. Document new 
 After **any** implementation work (new features, refactors, bug fixes, config changes, dependency updates, etc.), review and update all relevant documentation and instruction files. This applies when creating a new service layer AND when updating existing functionality — any change that affects behaviour, structure, or configuration may require documentation updates.
 
 - **`README.md`** — Project summary, technology tables, architecture diagram, section links.
-- **`wiki/`** — Detailed documentation pages (Architecture, AWS Technologies, RAG and OpenSearch, Google ADK Agent, MCP Server, API Routes, Installation, Testing).
+- **`wiki/`** — Detailed documentation pages (Architecture, AWS Technologies, RAG and Search, Google ADK Agent, MCP Server, API Routes, Installation, Testing).
 - **`.github/copilot-instructions.md`** — Project structure, tech stack, coding conventions, env vars.
 - **`.github/copilot-code-instructions.md`** — Workflow steps, pattern references, verification checklist.
 - **`CLAUDE.md`** — Claude Code entry point; update if instruction file responsibilities or documentation locations change.
@@ -154,6 +166,18 @@ Do not leave stale references. If a file, class, route, agent, or tool was renam
 
 ## Infrastructure Setup
 
-Some services require one-time infrastructure setup (e.g., OpenSearch pipelines, index creation). These should be documented as runnable scripts or dashboard instructions in a dedicated folder (e.g., `docs/opensearch_index_setup.md`), **not** embedded in application startup code — unless the provisioning is idempotent and lightweight (like `S3SetupService` creating a bucket if absent, or `OpenSearchSetupService` bulk-indexing local docs with dedup).
+Search infrastructure (Lambda function, S3 bucket for index artifacts, IAM role) is defined as Terraform in `infra/`. Deploy with:
 
-The complete AOSS infrastructure (IAM roles, collection, pipelines, index) is automated via `scripts/setup_opensearch.py`. Run it once before first use: `conda run --prefix .venv python scripts/setup_opensearch.py`.
+```bash
+cd infra
+terraform init
+terraform apply -var="index_bucket_name=your-bucket-name"
+```
+
+Then build and upload the search index:
+
+```bash
+conda run --prefix .venv python scripts/build_search_index.py --deploy-lambda
+```
+
+The `SearchSetupService` also performs idempotent setup at app startup (checks if Lambda and artifacts exist, builds/deploys if missing, bulk-indexes local docs with dedup).

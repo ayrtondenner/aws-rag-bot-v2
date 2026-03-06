@@ -6,7 +6,7 @@ from google.adk.models.lite_llm import LiteLlm
 from .settings import Settings
 from shared.s3_tools import build_s3_tools
 from shared.document_tools import build_document_tools
-from shared.opensearch_tools import build_opensearch_tools
+from shared.search_tools import build_search_tools
 
 
 def build_root_agent(settings: Settings) -> Agent:
@@ -16,7 +16,7 @@ def build_root_agent(settings: Settings) -> Agent:
     """
     s3_agent = build_s3_agent(settings)
     document_agent = build_document_agent(settings)
-    opensearch_agent = build_opensearch_agent(settings)
+    search_agent = build_search_agent(settings)
     return Agent(
         name="root_agent",
         model=LiteLlm(model=settings._anthropic_model),
@@ -28,10 +28,10 @@ def build_root_agent(settings: Settings) -> Agent:
             "- s3_agent: S3 bucket operations (check existence, list files, fetch file content). "
             "If the user doesn't provide a bucket name, it defaults to the SageMaker docs bucket from env var S3_BUCKET_NAME.\n"
             "- document_agent: Local documentation operations (list files and fetch file content from the local sagemaker-docs folder).\n"
-            "- opensearch_agent: OpenSearch hybrid search operations (index documents, search with BM25 + neural, "
+            "- search_agent: Hybrid search operations (index documents, search with BM25 + vector via FAISS, "
             "check document existence, list indexed documents, get index stats).\n"
         ),
-        sub_agents=[s3_agent, document_agent, opensearch_agent],
+        sub_agents=[s3_agent, document_agent, search_agent],
     )
 
 
@@ -70,34 +70,34 @@ def build_document_agent(settings: Settings) -> Agent:
     )
 
 
-def build_opensearch_agent(settings: Settings) -> Agent:
-    """Build the OpenSearch sub-agent for hybrid search operations.
+def build_search_agent(settings: Settings) -> Agent:
+    """Build the search sub-agent for hybrid search operations.
 
     Args:
         settings: Agent settings (provides LLM model string).
 
     Returns:
-        A configured OpenSearch Agent.
+        A configured search Agent.
     """
 
     return Agent(
-        name="opensearch_agent",
+        name="search_agent",
         model=LiteLlm(model=settings._anthropic_model),
         description=(
-            "Agent for OpenSearch hybrid search operations (index documents, search with BM25 + neural, "
+            "Agent for hybrid search operations (index documents, search with BM25 + vector via FAISS, "
             "check document existence, list indexed documents, get index stats)."
         ),
         instruction=(
-            "You are the OpenSearch agent. You help the user search and manage documents "
-            "in the OpenSearch index.\n\n"
+            "You are the search agent. You help the user search and manage documents "
+            "in the search index (FAISS + BM25 via Lambda).\n\n"
             "Your capabilities:\n"
-            "- **Search**: Use `opensearch_query` to find relevant documents. Default search type is 'hybrid' "
-            "(combines BM25 text matching with neural vector search). You can also do 'text' or 'vector' only.\n"
-            "- **Index**: Use `opensearch_index_document` to add a document to the index (auto-chunks and skips duplicates).\n"
-            "- **Check existence**: Use `opensearch_document_exists` to see if a filename is already indexed.\n"
-            "- **List documents**: Use `opensearch_list_indexed_documents` to see all indexed filenames.\n"
-            "- **Stats**: Use `opensearch_get_index_stats` for index-level statistics.\n\n"
-            "If the user asks for non-OpenSearch tasks, call the `transfer_to_root` tool to hand back to the root agent."
+            "- **Search**: Use `search_query` to find relevant documents. Default search type is 'hybrid' "
+            "(combines BM25 text matching with FAISS vector search). You can also do 'text' or 'vector' only.\n"
+            "- **Index**: Use `search_index_document` to add a document to the index (auto-chunks and skips duplicates).\n"
+            "- **Check existence**: Use `search_document_exists` to see if a filename is already indexed.\n"
+            "- **List documents**: Use `search_list_indexed_documents` to see all indexed filenames.\n"
+            "- **Stats**: Use `search_get_index_stats` for index-level statistics.\n\n"
+            "If the user asks for non-search tasks, call the `transfer_to_root` tool to hand back to the root agent."
         ),
-        tools=build_opensearch_tools(),
+        tools=build_search_tools(),
     )

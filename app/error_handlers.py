@@ -17,16 +17,12 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from starlette import status
 
-from app.services.opensearch_service import OpenSearchServiceError
 from app.services.s3_service import S3ServiceError
+from app.services.search_service import SearchServiceError
 
 
 async def s3_service_error_handler(request: Request, exc: S3ServiceError) -> JSONResponse:  # noqa: ARG001
     """Map S3 service-layer failures to a consistent HTTP response.
-
-    This keeps AWS/S3 errors from leaking internal details to API consumers
-    while still returning a predictable payload the frontend/clients can
-    handle.
 
     Returns:
         502 Bad Gateway with a JSON body: ``{"detail": "..."}``
@@ -37,10 +33,10 @@ async def s3_service_error_handler(request: Request, exc: S3ServiceError) -> JSO
     )
 
 
-async def opensearch_service_error_handler(
-    request: Request, exc: OpenSearchServiceError,
+async def search_service_error_handler(
+    request: Request, exc: SearchServiceError,
 ) -> JSONResponse:  # noqa: ARG001
-    """Map OpenSearch service-layer failures to HTTP 502.
+    """Map search service-layer failures to HTTP 502.
 
     Returns:
         502 Bad Gateway with a JSON body: ``{"detail": "..."}``
@@ -58,4 +54,4 @@ def register_error_handlers(app: FastAPI) -> None:
         app: The FastAPI application instance.
     """
     app.add_exception_handler(S3ServiceError, s3_service_error_handler)  # type: ignore[arg-type]
-    app.add_exception_handler(OpenSearchServiceError, opensearch_service_error_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(SearchServiceError, search_service_error_handler)  # type: ignore[arg-type]

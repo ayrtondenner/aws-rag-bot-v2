@@ -36,7 +36,7 @@ When adding a new capability (e.g., a new external integration, a new domain), f
 - Create the domain service class accepting a config object in `__init__`.
 - Define a private `_client()` factory method for the external client (keeps construction testable — tests can replace it with a fake).
 - All public methods should be `async` (use `asyncio.to_thread()` to wrap sync clients when necessary).
-- Define a custom error class inheriting from `RuntimeError` (e.g., `OpenSearchServiceError(RuntimeError)`) for consistent error handling.
+- Define a custom error class inheriting from `RuntimeError` (e.g., `SearchServiceError(RuntimeError)`) for consistent error handling.
 - Use `logging.getLogger(__name__)` and log exceptions before re-raising as service errors.
 - Keep business logic in the service, not in routes or tools.
 
@@ -51,7 +51,7 @@ When adding a new capability (e.g., a new external integration, a new domain), f
 - If the new service depends on other services (e.g., needs `DocumentService` for chunking), compose them here.
 - If a one-time **setup service** is needed (auto-provisioning at startup), also add `get_<domain>_setup_service()` and a corresponding class in `app/services/setup/`.
 
-**Pattern reference:** `get_s3_service()`, `get_s3_setup_service()`, `get_opensearch_setup_service()` in `dependencies.py`.
+**Pattern reference:** `get_s3_service()`, `get_s3_setup_service()`, `get_search_setup_service()` in `dependencies.py`.
 
 ### Step 5 — Routes
 
@@ -81,7 +81,7 @@ Tests follow two distinct patterns depending on the layer being tested. Write te
 
 **Location:** `tests/services/test_<domain>_service.py`
 
-- Create a **fake client class** (e.g., `FakeOpenSearchClient`) that:
+- Create a **fake client class** (e.g., `FakeLambdaClient`) that:
   - Implements the same async context manager protocol as the real client.
   - Tracks calls in a `self.calls: list[tuple[str, dict]]` list.
   - Has configurable responses and injectable exceptions.
@@ -99,7 +99,7 @@ Tests follow two distinct patterns depending on the layer being tested. Write te
 
 **Location:** `tests/routes/test_<domain>_routes.py`
 
-- Create a **stub service class** (e.g., `StubOpenSearchService`) with:
+- Create a **stub service class** (e.g., `StubSearchService`) with:
   - Configurable return values and injectable exceptions for each method.
   - A `self.seen: dict` to capture what parameters were passed.
 - Use `fastapi_app.dependency_overrides[get_<domain>_service] = lambda: stub` to inject the stub.
@@ -125,7 +125,7 @@ Tests follow two distinct patterns depending on the layer being tested. Write te
 **Location:** `shared/<domain>_tools.py` (new file per domain, e.g., `shared/s3_tools.py`)
 
 - Cross-cutting helpers (`transfer_to_root`, `DEFAULT_SAGEMAKER_DOCS_BUCKET_NAME`) live in `shared/__init__.py`.
-- Add async tool functions that wrap the service methods (e.g., `opensearch_query(...)`, `opensearch_index_document(...)`).
+- Add async tool functions that wrap the service methods (e.g., `search_query(...)`, `search_index_document(...)`).
 - Add a private helper `_get_<domain>_service()` following the `_get_s3_service()` pattern.
 - Add a `build_<domain>_tools() -> list[ToolUnion]` function that returns:
   - `FunctionTool(...)` for each tool function.
@@ -160,12 +160,12 @@ The `FastMCP` instance lives in `mcp_server/__init__.py`. Each domain tool modul
 - Use `@mcp.resource(...)` with:
   - `name` — snake_case identifier.
   - `description` — matches the shared tool's docstring.
-  - `uri` — follow existing URI scheme patterns (e.g., `s3://...`, `local://...`, `opensearch://...`).
+  - `uri` — follow existing URI scheme patterns (e.g., `s3://...`, `local://...`, `search://...`).
 - Use `Annotated[<type>, Field(...)]` for parameter metadata.
 - Return the same Pydantic response models as the shared tools.
 - After creating a new tool module, add a side-effect import in `mcp_server/main.py` (e.g., `import mcp_server.<domain>_tools  # noqa: F401`).
 
-**Pattern reference:** `mcp_server/s3_tools.py`, `mcp_server/document_tools.py`, `mcp_server/opensearch_tools.py`.
+**Pattern reference:** `mcp_server/s3_tools.py`, `mcp_server/document_tools.py`, `mcp_server/search_tools.py`.
 
 ---
 

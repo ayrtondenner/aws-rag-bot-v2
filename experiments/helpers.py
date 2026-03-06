@@ -25,7 +25,7 @@ def search(query: str, search_type: str = "hybrid", size: int = 10) -> dict[str,
         requests.HTTPError: If the API returns a non-2xx status.
     """
     resp = requests.post(
-        f"{BASE_URL}/opensearch/search",
+        f"{BASE_URL}/search/search",
         json={"query": query, "size": size, "search_type": search_type},
         timeout=30,
     )
@@ -143,12 +143,12 @@ def rank_biased_overlap(list_a: list[str], list_b: list[str], p: float = 0.9) ->
 
 
 def get_index_stats() -> dict[str, Any]:
-    """Get OpenSearch index statistics.
+    """Get search index statistics.
 
     Returns:
         Parsed JSON with index_name, doc_count, status.
     """
-    resp = requests.get(f"{BASE_URL}/opensearch/index/stats", timeout=10)
+    resp = requests.get(f"{BASE_URL}/search/index/stats", timeout=10)
     resp.raise_for_status()
     return resp.json()
 
@@ -157,9 +157,9 @@ def get_indexed_filenames() -> list[str]:
     """Fetch all indexed document filenames from the API.
 
     Returns:
-        Sorted list of filenames currently in the OpenSearch index.
+        Sorted list of filenames currently in the search index.
     """
-    resp = requests.get(f"{BASE_URL}/opensearch/documents", timeout=30)
+    resp = requests.get(f"{BASE_URL}/search/documents", timeout=30)
     resp.raise_for_status()
     return resp.json().get("filenames", [])
 
@@ -174,7 +174,7 @@ def delete_documents_by_filename(filename: str) -> int:
         Number of chunks deleted.
     """
     resp = requests.delete(
-        f"{BASE_URL}/opensearch/documents",
+        f"{BASE_URL}/search/documents",
         params={"filename": filename},
         timeout=30,
     )
@@ -183,7 +183,7 @@ def delete_documents_by_filename(filename: str) -> int:
 
 
 def clear_index() -> dict[str, int]:
-    """Delete ALL documents from the OpenSearch index.
+    """Delete ALL documents from the search index.
 
     Fetches the list of indexed filenames, then deletes each one.
 
@@ -213,7 +213,7 @@ def reindex_local_docs(
         Parsed JSON response from the bulk-index endpoint.
     """
     resp = requests.post(
-        f"{BASE_URL}/opensearch/index-local-docs",
+        f"{BASE_URL}/search/index-local-docs",
         params={
             "chunk_size": chunk_size,
             "chunk_overlap": chunk_overlap,
@@ -243,7 +243,7 @@ def index_single_document(
         Parsed JSON response.
     """
     resp = requests.post(
-        f"{BASE_URL}/opensearch/index",
+        f"{BASE_URL}/search/index",
         json={"filename": filename, "content": content},
         params={"chunk_size": chunk_size, "chunk_overlap": chunk_overlap},
         timeout=60,

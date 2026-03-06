@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from app.models.opensearch import (
+from app.models.search import (
     BulkIndexResponse,
     IndexDocumentRequest,
     IndexDocumentResponse,
@@ -10,17 +10,17 @@ from app.models.opensearch import (
     SearchHit,
     SearchResponse,
 )
-from app.services.dependencies import get_opensearch_service
-from app.services.opensearch_service import OpenSearchServiceError
+from app.services.dependencies import get_search_service
+from app.services.search_service import SearchServiceError
 
 
 # ---------------------------------------------------------------------------
-# Stub OpenSearchService
+# Stub SearchService
 # ---------------------------------------------------------------------------
 
 
-class StubOpenSearchService:
-    """Test double for ``OpenSearchService`` — configurable canned responses."""
+class StubSearchService:
+    """Test double for ``SearchService`` — configurable canned responses."""
 
     def __init__(self) -> None:
         # document_exists
@@ -128,13 +128,13 @@ class StubOpenSearchService:
 
 
 def test_index_document_success(client, fastapi_app):
-    stub = StubOpenSearchService()
+    stub = StubSearchService()
     stub.index_document_result = IndexDocumentResponse(
         filename="doc.md", chunk_count=3, doc_ids=["a", "b", "c"], skipped=False,
     )
-    fastapi_app.dependency_overrides[get_opensearch_service] = lambda: stub
+    fastapi_app.dependency_overrides[get_search_service] = lambda: stub
     try:
-        resp = client.post("/opensearch/index", json={"filename": "doc.md", "content": "my text"})
+        resp = client.post("/search/index", json={"filename": "doc.md", "content": "my text"})
         assert resp.status_code == 200
         data = resp.json()
         assert data["filename"] == "doc.md"
@@ -146,13 +146,13 @@ def test_index_document_success(client, fastapi_app):
 
 
 def test_index_document_skipped(client, fastapi_app):
-    stub = StubOpenSearchService()
+    stub = StubSearchService()
     stub.index_document_result = IndexDocumentResponse(
         filename="doc.md", chunk_count=0, doc_ids=[], skipped=True,
     )
-    fastapi_app.dependency_overrides[get_opensearch_service] = lambda: stub
+    fastapi_app.dependency_overrides[get_search_service] = lambda: stub
     try:
-        resp = client.post("/opensearch/index", json={"filename": "doc.md", "content": "text"})
+        resp = client.post("/search/index", json={"filename": "doc.md", "content": "text"})
         assert resp.status_code == 200
         assert resp.json()["skipped"] is True
     finally:
@@ -160,11 +160,11 @@ def test_index_document_skipped(client, fastapi_app):
 
 
 def test_index_document_value_error_returns_400(client, fastapi_app):
-    stub = StubOpenSearchService()
+    stub = StubSearchService()
     stub.index_document_exc = ValueError("content must be provided")
-    fastapi_app.dependency_overrides[get_opensearch_service] = lambda: stub
+    fastapi_app.dependency_overrides[get_search_service] = lambda: stub
     try:
-        resp = client.post("/opensearch/index", json={"filename": "x.md", "content": "t"})
+        resp = client.post("/search/index", json={"filename": "x.md", "content": "t"})
         assert resp.status_code == 400
         assert "content must be provided" in resp.json()["detail"]
     finally:
@@ -172,11 +172,11 @@ def test_index_document_value_error_returns_400(client, fastapi_app):
 
 
 def test_index_document_service_error_returns_502(client, fastapi_app):
-    stub = StubOpenSearchService()
-    stub.index_document_exc = OpenSearchServiceError("bulk failed")
-    fastapi_app.dependency_overrides[get_opensearch_service] = lambda: stub
+    stub = StubSearchService()
+    stub.index_document_exc = SearchServiceError("bulk failed")
+    fastapi_app.dependency_overrides[get_search_service] = lambda: stub
     try:
-        resp = client.post("/opensearch/index", json={"filename": "x.md", "content": "t"})
+        resp = client.post("/search/index", json={"filename": "x.md", "content": "t"})
         assert resp.status_code == 502
         assert resp.json()["detail"] == "bulk failed"
     finally:
@@ -189,7 +189,7 @@ def test_index_document_service_error_returns_502(client, fastapi_app):
 
 
 def test_bulk_index_success(client, fastapi_app):
-    stub = StubOpenSearchService()
+    stub = StubSearchService()
     stub.bulk_index_result = BulkIndexResponse(
         total_chunks=5, indexed_count=2, skipped_count=1,
         results=[
@@ -198,9 +198,9 @@ def test_bulk_index_success(client, fastapi_app):
             IndexDocumentResponse(filename="c.md", chunk_count=0, doc_ids=[], skipped=True),
         ],
     )
-    fastapi_app.dependency_overrides[get_opensearch_service] = lambda: stub
+    fastapi_app.dependency_overrides[get_search_service] = lambda: stub
     try:
-        resp = client.post("/opensearch/bulk-index", json={
+        resp = client.post("/search/bulk-index", json={
             "documents": [
                 {"filename": "a.md", "content": "aaa"},
                 {"filename": "b.md", "content": "bbb"},
@@ -222,14 +222,14 @@ def test_bulk_index_success(client, fastapi_app):
 
 
 def test_search_hybrid_success(client, fastapi_app):
-    stub = StubOpenSearchService()
+    stub = StubSearchService()
     stub.search_result = SearchResponse(
         query="sagemaker", search_type="hybrid", total_hits=1,
         hits=[SearchHit(doc_id="h1", score=0.9, filename="doc.md", content="found")],
     )
-    fastapi_app.dependency_overrides[get_opensearch_service] = lambda: stub
+    fastapi_app.dependency_overrides[get_search_service] = lambda: stub
     try:
-        resp = client.post("/opensearch/search", json={"query": "sagemaker"})
+        resp = client.post("/search/search", json={"query": "sagemaker"})
         assert resp.status_code == 200
         data = resp.json()
         assert data["total_hits"] == 1
@@ -241,10 +241,10 @@ def test_search_hybrid_success(client, fastapi_app):
 
 
 def test_search_text_only(client, fastapi_app):
-    stub = StubOpenSearchService()
-    fastapi_app.dependency_overrides[get_opensearch_service] = lambda: stub
+    stub = StubSearchService()
+    fastapi_app.dependency_overrides[get_search_service] = lambda: stub
     try:
-        resp = client.post("/opensearch/search", json={"query": "test", "search_type": "text"})
+        resp = client.post("/search/search", json={"query": "test", "search_type": "text"})
         assert resp.status_code == 200
         assert stub.seen["search.search_type"] == "text"
     finally:
@@ -252,21 +252,21 @@ def test_search_text_only(client, fastapi_app):
 
 
 def test_search_empty_query_returns_422(client, fastapi_app):
-    stub = StubOpenSearchService()
-    fastapi_app.dependency_overrides[get_opensearch_service] = lambda: stub
+    stub = StubSearchService()
+    fastapi_app.dependency_overrides[get_search_service] = lambda: stub
     try:
-        resp = client.post("/opensearch/search", json={"query": ""})
+        resp = client.post("/search/search", json={"query": ""})
         assert resp.status_code == 422
     finally:
         fastapi_app.dependency_overrides.clear()
 
 
 def test_search_service_error_returns_502(client, fastapi_app):
-    stub = StubOpenSearchService()
-    stub.search_exc = OpenSearchServiceError("search failed")
-    fastapi_app.dependency_overrides[get_opensearch_service] = lambda: stub
+    stub = StubSearchService()
+    stub.search_exc = SearchServiceError("search failed")
+    fastapi_app.dependency_overrides[get_search_service] = lambda: stub
     try:
-        resp = client.post("/opensearch/search", json={"query": "test"})
+        resp = client.post("/search/search", json={"query": "test"})
         assert resp.status_code == 502
         assert resp.json()["detail"] == "search failed"
     finally:
@@ -279,13 +279,13 @@ def test_search_service_error_returns_502(client, fastapi_app):
 
 
 def test_index_stats_success(client, fastapi_app):
-    stub = StubOpenSearchService()
+    stub = StubSearchService()
     stub.index_stats_result = IndexStatsResponse(
         index_name="sagemaker-docs", doc_count=42, status="available",
     )
-    fastapi_app.dependency_overrides[get_opensearch_service] = lambda: stub
+    fastapi_app.dependency_overrides[get_search_service] = lambda: stub
     try:
-        resp = client.get("/opensearch/index/stats")
+        resp = client.get("/search/index/stats")
         assert resp.status_code == 200
         data = resp.json()
         assert data["doc_count"] == 42
@@ -295,11 +295,11 @@ def test_index_stats_success(client, fastapi_app):
 
 
 def test_index_stats_service_error_returns_502(client, fastapi_app):
-    stub = StubOpenSearchService()
-    stub.index_stats_exc = OpenSearchServiceError("down")
-    fastapi_app.dependency_overrides[get_opensearch_service] = lambda: stub
+    stub = StubSearchService()
+    stub.index_stats_exc = SearchServiceError("down")
+    fastapi_app.dependency_overrides[get_search_service] = lambda: stub
     try:
-        resp = client.get("/opensearch/index/stats")
+        resp = client.get("/search/index/stats")
         assert resp.status_code == 502
     finally:
         fastapi_app.dependency_overrides.clear()
@@ -311,11 +311,11 @@ def test_index_stats_service_error_returns_502(client, fastapi_app):
 
 
 def test_list_indexed_documents_success(client, fastapi_app):
-    stub = StubOpenSearchService()
+    stub = StubSearchService()
     stub.list_indexed_docs_result = ["a.md", "b.md"]
-    fastapi_app.dependency_overrides[get_opensearch_service] = lambda: stub
+    fastapi_app.dependency_overrides[get_search_service] = lambda: stub
     try:
-        resp = client.get("/opensearch/documents")
+        resp = client.get("/search/documents")
         assert resp.status_code == 200
         data = resp.json()
         assert data["count"] == 2
@@ -330,11 +330,11 @@ def test_list_indexed_documents_success(client, fastapi_app):
 
 
 def test_document_exists_true(client, fastapi_app):
-    stub = StubOpenSearchService()
+    stub = StubSearchService()
     stub.document_exists_result = True
-    fastapi_app.dependency_overrides[get_opensearch_service] = lambda: stub
+    fastapi_app.dependency_overrides[get_search_service] = lambda: stub
     try:
-        resp = client.get("/opensearch/document/exists?filename=doc.md")
+        resp = client.get("/search/document/exists?filename=doc.md")
         assert resp.status_code == 200
         assert resp.json() == {"filename": "doc.md", "exists": True}
     finally:
@@ -342,11 +342,11 @@ def test_document_exists_true(client, fastapi_app):
 
 
 def test_document_exists_false(client, fastapi_app):
-    stub = StubOpenSearchService()
+    stub = StubSearchService()
     stub.document_exists_result = False
-    fastapi_app.dependency_overrides[get_opensearch_service] = lambda: stub
+    fastapi_app.dependency_overrides[get_search_service] = lambda: stub
     try:
-        resp = client.get("/opensearch/document/exists?filename=missing.md")
+        resp = client.get("/search/document/exists?filename=missing.md")
         assert resp.status_code == 200
         assert resp.json()["exists"] is False
     finally:
@@ -354,10 +354,10 @@ def test_document_exists_false(client, fastapi_app):
 
 
 def test_document_exists_missing_param_returns_422(client, fastapi_app):
-    stub = StubOpenSearchService()
-    fastapi_app.dependency_overrides[get_opensearch_service] = lambda: stub
+    stub = StubSearchService()
+    fastapi_app.dependency_overrides[get_search_service] = lambda: stub
     try:
-        resp = client.get("/opensearch/document/exists")
+        resp = client.get("/search/document/exists")
         assert resp.status_code == 422
     finally:
         fastapi_app.dependency_overrides.clear()
@@ -369,11 +369,11 @@ def test_document_exists_missing_param_returns_422(client, fastapi_app):
 
 
 def test_delete_document_success(client, fastapi_app):
-    stub = StubOpenSearchService()
+    stub = StubSearchService()
     stub.delete_document_result = True
-    fastapi_app.dependency_overrides[get_opensearch_service] = lambda: stub
+    fastapi_app.dependency_overrides[get_search_service] = lambda: stub
     try:
-        resp = client.delete("/opensearch/document/abc123")
+        resp = client.delete("/search/document/abc123")
         assert resp.status_code == 200
         assert resp.json() == {"deleted": True}
         assert stub.seen["delete_document.doc_id"] == "abc123"
@@ -382,11 +382,11 @@ def test_delete_document_success(client, fastapi_app):
 
 
 def test_delete_document_not_found_returns_404(client, fastapi_app):
-    stub = StubOpenSearchService()
+    stub = StubSearchService()
     stub.delete_document_result = False
-    fastapi_app.dependency_overrides[get_opensearch_service] = lambda: stub
+    fastapi_app.dependency_overrides[get_search_service] = lambda: stub
     try:
-        resp = client.delete("/opensearch/document/missing")
+        resp = client.delete("/search/document/missing")
         assert resp.status_code == 404
     finally:
         fastapi_app.dependency_overrides.clear()
@@ -398,11 +398,11 @@ def test_delete_document_not_found_returns_404(client, fastapi_app):
 
 
 def test_delete_by_filename_success(client, fastapi_app):
-    stub = StubOpenSearchService()
+    stub = StubSearchService()
     stub.delete_by_filename_result = 5
-    fastapi_app.dependency_overrides[get_opensearch_service] = lambda: stub
+    fastapi_app.dependency_overrides[get_search_service] = lambda: stub
     try:
-        resp = client.delete("/opensearch/documents?filename=doc.md")
+        resp = client.delete("/search/documents?filename=doc.md")
         assert resp.status_code == 200
         data = resp.json()
         assert data["filename"] == "doc.md"
@@ -412,10 +412,10 @@ def test_delete_by_filename_success(client, fastapi_app):
 
 
 def test_delete_by_filename_missing_param_returns_422(client, fastapi_app):
-    stub = StubOpenSearchService()
-    fastapi_app.dependency_overrides[get_opensearch_service] = lambda: stub
+    stub = StubSearchService()
+    fastapi_app.dependency_overrides[get_search_service] = lambda: stub
     try:
-        resp = client.delete("/opensearch/documents")
+        resp = client.delete("/search/documents")
         assert resp.status_code == 422
     finally:
         fastapi_app.dependency_overrides.clear()

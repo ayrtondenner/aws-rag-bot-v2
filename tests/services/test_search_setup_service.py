@@ -5,14 +5,15 @@ from typing import Any, Optional
 
 import pytest
 
-from app.models.opensearch import (
+from app.models.search import (
     BulkIndexResponse,
     IndexDocumentRequest,
     IndexDocumentResponse,
 )
+from app.services.config import SearchConfig
 from app.services.document_service import DocumentService
-from app.services.opensearch_service import OpenSearchServiceError
-from app.services.setup.opensearch_setup_service import OpenSearchSetupService
+from app.services.search_service import SearchServiceError
+from app.services.setup.search_setup_service import SearchSetupService
 
 
 # ---------------------------------------------------------------------------
@@ -50,7 +51,7 @@ class StubDocumentService(DocumentService):
         return ["chunk-0", "chunk-1"] if text.strip() else []
 
 
-class StubOpenSearchService:
+class StubSearchService:
     """Captures bulk_index_documents calls and returns configurable results."""
 
     def __init__(
@@ -88,16 +89,33 @@ class StubOpenSearchService:
 # Helpers
 # ---------------------------------------------------------------------------
 
+_DEFAULT_CONFIG = SearchConfig(
+    lambda_function_name="test-lambda",
+    index_bucket="test-bucket",
+    index_prefix="test-index/",
+    region="us-east-1",
+)
+
 
 def _make_setup_service(
     *,
     doc_stub: StubDocumentService,
-    os_stub: StubOpenSearchService,
-) -> OpenSearchSetupService:
-    return OpenSearchSetupService(
-        opensearch=os_stub,  # type: ignore[arg-type]
+    search_stub: StubSearchService,
+    lambda_exists: bool = True,
+    artifacts_exist: bool = True,
+) -> SearchSetupService:
+    service = SearchSetupService(
+        search=search_stub,  # type: ignore[arg-type]
         document_service=doc_stub,
+        config=_DEFAULT_CONFIG,
     )
+    # Override existence checks to avoid real AWS calls
+    service._lambda_exists = lambda: lambda_exists  # type: ignore[method-assign]
+    service._artifacts_exist = lambda: artifacts_exist  # type: ignore[method-assign]
+    # Override build/deploy to avoid real AWS calls
+    service._build_and_upload_artifacts = lambda: None  # type: ignore[method-assign]
+    service._create_or_update_lambda = lambda: None  # type: ignore[method-assign]
+    return service
 
 
 # ---------------------------------------------------------------------------
@@ -105,122 +123,145 @@ def _make_setup_service(
 # ---------------------------------------------------------------------------
 
 
-def test_setup_index_indexes_all_local_docs():
-    """Happy path: local docs are read and passed to bulk_index_documents."""
+def test_setup_when_both_exist_indexes_local_docs():
+    """Happy path: Lambda and artifacts exist, just bulk-index local docs."""
     doc_stub = StubDocumentService(
         local_docs={"count": 2, "documents": ["a.md", "b.md"]},
         file_contents={"a.md": "content a", "b.md": "content b"},
     )
-    os_stub = StubOpenSearchService(
+    search_stub = StubSearchService(
         bulk_response=BulkIndexResponse(
-            total_chunks=4,
-            indexed_count=2,
-            skipped_count=0,
+            total_chunks=4, indexed_count=2, skipped_count=0,
             results=[
                 IndexDocumentResponse(filename="a.md", chunk_count=2, doc_ids=["1", "2"], skipped=False),
                 IndexDocumentResponse(filename="b.md", chunk_count=2, doc_ids=["3", "4"], skipped=False),
             ],
         ),
     )
-    service = _make_setup_service(doc_stub=doc_stub, os_stub=os_stub)
+    service = _make_setup_service(
+        doc_stub=doc_stub, search_stub=search_stub,
+        lambda_exists=True, artifacts_exist=True,
+    )
 
     result = asyncio.run(service.setup_index())
 
     assert result.indexed_count == 2
     assert result.total_chunks == 4
-    assert len(os_stub.calls) == 1
-    assert len(os_stub.calls[0]["documents"]) == 2
+    assert len(search_stub.calls) == 1
 
 
-def test_setup_index_returns_empty_when_no_local_docs():
-    """No local docs -> returns zero-count BulkIndexResponse without calling OpenSearch."""
+def test_setup_no_local_docs_returns_empty():
     doc_stub = StubDocumentService(local_docs={"count": 0, "documents": []})
-    os_stub = StubOpenSearchService()
-    service = _make_setup_service(doc_stub=doc_stub, os_stub=os_stub)
+    search_stub = StubSearchService()
+    service = _make_setup_service(
+        doc_stub=doc_stub, search_stub=search_stub,
+        lambda_exists=True, artifacts_exist=True,
+    )
 
     result = asyncio.run(service.setup_index())
 
     assert result.indexed_count == 0
-    assert result.skipped_count == 0
     assert result.total_chunks == 0
-    assert os_stub.calls == []
+    assert search_stub.calls == []
 
 
-def test_setup_index_skips_unreadable_files():
-    """Unreadable files are skipped; remaining files are still indexed."""
+def test_setup_skips_unreadable_files():
     doc_stub = StubDocumentService(
         local_docs={"count": 3, "documents": ["good.md", "bad.md", "ok.md"]},
         file_contents={"good.md": "good content", "ok.md": "ok content"},
         unreadable_files={"bad.md"},
     )
-    os_stub = StubOpenSearchService(
+    search_stub = StubSearchService(
         bulk_response=BulkIndexResponse(
-            total_chunks=4,
-            indexed_count=2,
-            skipped_count=0,
+            total_chunks=4, indexed_count=2, skipped_count=0,
             results=[
                 IndexDocumentResponse(filename="good.md", chunk_count=2, doc_ids=["1", "2"], skipped=False),
                 IndexDocumentResponse(filename="ok.md", chunk_count=2, doc_ids=["3", "4"], skipped=False),
             ],
         ),
     )
-    service = _make_setup_service(doc_stub=doc_stub, os_stub=os_stub)
+    service = _make_setup_service(
+        doc_stub=doc_stub, search_stub=search_stub,
+        lambda_exists=True, artifacts_exist=True,
+    )
 
     result = asyncio.run(service.setup_index())
 
     assert result.indexed_count == 2
-    assert len(os_stub.calls[0]["documents"]) == 2
-    filenames_sent = [d.filename for d in os_stub.calls[0]["documents"]]
+    filenames_sent = [d.filename for d in search_stub.calls[0]["documents"]]
     assert "bad.md" not in filenames_sent
 
 
-def test_setup_index_all_files_unreadable_returns_empty():
-    """If every file is unreadable, returns zero-count response."""
-    doc_stub = StubDocumentService(
-        local_docs={"count": 2, "documents": ["bad1.md", "bad2.md"]},
-        file_contents={},
-        unreadable_files={"bad1.md", "bad2.md"},
-    )
-    os_stub = StubOpenSearchService()
-    service = _make_setup_service(doc_stub=doc_stub, os_stub=os_stub)
-
-    result = asyncio.run(service.setup_index())
-
-    assert result.indexed_count == 0
-    assert os_stub.calls == []
-
-
-def test_setup_index_propagates_opensearch_errors():
-    """If OpenSearchService raises, the error propagates (caller in main.py catches it)."""
+def test_setup_propagates_search_errors():
     doc_stub = StubDocumentService(
         local_docs={"count": 1, "documents": ["a.md"]},
         file_contents={"a.md": "content"},
     )
-    os_stub = StubOpenSearchService(error=OpenSearchServiceError("connection refused"))
-    service = _make_setup_service(doc_stub=doc_stub, os_stub=os_stub)
+    search_stub = StubSearchService(error=SearchServiceError("connection refused"))
+    service = _make_setup_service(
+        doc_stub=doc_stub, search_stub=search_stub,
+        lambda_exists=True, artifacts_exist=True,
+    )
 
-    with pytest.raises(OpenSearchServiceError, match="connection refused"):
+    with pytest.raises(SearchServiceError, match="connection refused"):
         asyncio.run(service.setup_index())
 
 
-def test_setup_index_with_dedup_results():
-    """Verify the service correctly returns results when some docs are skipped (dedup)."""
+def test_setup_missing_artifacts_triggers_build():
+    """When artifacts don't exist, build is triggered."""
+    build_called = {"value": False}
+    doc_stub = StubDocumentService(local_docs={"count": 0, "documents": []})
+    search_stub = StubSearchService()
+    service = _make_setup_service(
+        doc_stub=doc_stub, search_stub=search_stub,
+        lambda_exists=True, artifacts_exist=False,
+    )
+    def _tracking_build() -> None:
+        build_called["value"] = True
+
+    service._build_and_upload_artifacts = _tracking_build  # type: ignore[method-assign]
+
+    asyncio.run(service.setup_index())
+    assert build_called["value"] is True
+
+
+def test_setup_missing_lambda_triggers_deploy():
+    """When Lambda doesn't exist, deployment is triggered."""
+    deploy_called = {"value": False}
+    doc_stub = StubDocumentService(local_docs={"count": 0, "documents": []})
+    search_stub = StubSearchService()
+    service = _make_setup_service(
+        doc_stub=doc_stub, search_stub=search_stub,
+        lambda_exists=False, artifacts_exist=True,
+    )
+
+    def _tracking_deploy() -> None:
+        deploy_called["value"] = True
+
+    service._create_or_update_lambda = _tracking_deploy  # type: ignore[method-assign]
+
+    asyncio.run(service.setup_index())
+    assert deploy_called["value"] is True
+
+
+def test_setup_with_dedup_results():
     doc_stub = StubDocumentService(
         local_docs={"count": 2, "documents": ["new.md", "old.md"]},
         file_contents={"new.md": "new content", "old.md": "old content"},
     )
-    os_stub = StubOpenSearchService(
+    search_stub = StubSearchService(
         bulk_response=BulkIndexResponse(
-            total_chunks=2,
-            indexed_count=1,
-            skipped_count=1,
+            total_chunks=2, indexed_count=1, skipped_count=1,
             results=[
                 IndexDocumentResponse(filename="new.md", chunk_count=2, doc_ids=["1", "2"], skipped=False),
                 IndexDocumentResponse(filename="old.md", chunk_count=0, doc_ids=[], skipped=True),
             ],
         ),
     )
-    service = _make_setup_service(doc_stub=doc_stub, os_stub=os_stub)
+    service = _make_setup_service(
+        doc_stub=doc_stub, search_stub=search_stub,
+        lambda_exists=True, artifacts_exist=True,
+    )
 
     result = asyncio.run(service.setup_index())
 

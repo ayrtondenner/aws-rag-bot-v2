@@ -21,6 +21,6 @@ dependencies:
       - google-adk
       - google-adk[eval]
       - google-genai
-      - opensearch-py
-      - requests-aws4auth
+      - faiss-cpu
+      - rank-bm25
 prefix: ./.conda

@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 
 class IndexDocumentRequest(BaseModel):
-    """Request body for indexing a single document into OpenSearch."""
+    """Request body for indexing a single document."""
 
     filename: str = Field(..., description="Source document filename (e.g. 'amazon-sagemaker-toolkits.md').")
     content: str = Field(..., description="Full text content of the document.")
@@ -54,13 +54,13 @@ class IndexedDocumentsResponse(BaseModel):
 
 
 class SearchRequest(BaseModel):
-    """Request body for searching OpenSearch."""
+    """Request body for searching the index."""
 
     query: str = Field(..., min_length=1, description="Search query text.")
     size: int = Field(default=10, ge=1, le=100, description="Maximum number of results to return.")
     search_type: Literal["hybrid", "text", "vector"] = Field(
         default="hybrid",
-        description="Search strategy: 'hybrid' (BM25 + neural), 'text' (BM25 only), or 'vector' (neural only).",
+        description="Search strategy: 'hybrid' (BM25 + vector), 'text' (BM25 only), or 'vector' (vector only).",
     )
 
 
