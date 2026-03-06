@@ -1,16 +1,88 @@
-# OpenSearch Index Setup — Dashboard Dev Tools
+# OpenSearch Serverless — Complete Setup Guide
 
-> **See also**: The [RAG and OpenSearch](https://github.com/ayrtondenner/aws-rag-bot-v2/wiki/RAG-and-OpenSearch#opensearch-index-setup) wiki page contains these same instructions alongside additional context on the RAG pipeline, hybrid search, and index mappings.
+> **See also**: The [RAG and OpenSearch](https://github.com/ayrtondenner/aws-rag-bot-v2/wiki/RAG-and-OpenSearch#opensearch-index-setup) wiki page contains additional context on the RAG pipeline, hybrid search, and index mappings.
 
-> **One-time setup commands** to run in the **OpenSearch Dashboard → Dev Tools** console.
->
-> These create the ML connector (Bedrock Titan Embed v2), register & deploy the model,
-> create the ingest + search pipelines, and finally create the `sagemaker-docs` index
-> with the correct mappings.
+This guide covers the full infrastructure setup needed to run the RAG Bot v2 OpenSearch pipeline — from IAM roles and AOSS policies to pipelines and the vector index.
 
 ---
 
-## 1. Create the ML Connector (Bedrock Titan Embed v2)
+## Prerequisites Checklist
+
+Before creating the OpenSearch collection and index, the following must be in place:
+
+1. **IAM connector role** (`opensearch-bedrock-connector-role`)
+   - Permission policy: `bedrock:InvokeModel` on `amazon.titan-embed-text-v2:0`
+   - Trust policy: allows `aoss.amazonaws.com` to assume the role
+2. **AOSS encryption policy** — AWS-owned key for the collection
+3. **AOSS network policy** — public access for dashboards and API
+4. **AOSS data access policy** — must include ALL principals that will touch the collection:
+   - The caller identity (check with `aws sts get-caller-identity`)
+   - The connector role ARN
+   - Any additional IAM users or roles
+   - Collection, index, and model permissions (this was the main pain point — see `docs/opensearch-aoss-permissions-summary.md`)
+5. **AOSS collection** (`ragbot-v2-collection`, type: VECTORSEARCH) — must be in ACTIVE state
+
+> **Key gotcha**: The principal you're logged in with must be explicitly listed in the data access policy. It's not automatic — even admin users get "access denied" if their ARN isn't included.
+
+---
+
+## Automated Setup (Recommended)
+
+The `scripts/setup_opensearch.py` script automates the entire setup end-to-end:
+
+- **Phase 1**: Creates the IAM connector role with Bedrock permissions
+- **Phase 2**: Creates AOSS encryption, network, and data access policies + the collection
+- **Phase 3**: Creates the ML connector, model, pipelines, and index via the OpenSearch API
+- **Verification**: Indexes a test document and confirms the embedding was generated
+
+### Running the Script
+
+```bash
+conda run --prefix .venv python scripts/setup_opensearch.py
+```
+
+### Configuration
+
+The script uses sensible defaults matching the project. Override via environment variables:
+
+| Value | Default | Env Var |
+|-------|---------|---------|
+| Region | `us-west-2` | `AWS_REGION` |
+| Collection name | `ragbot-v2-collection` | `OPENSEARCH_COLLECTION_NAME` |
+| Index name | `sagemaker-docs` | `OPENSEARCH_INDEX_NAME` |
+| Embedding dimension | `1024` | `BEDROCK_EMBEDDING_DIM` |
+| Extra principals | none | `AOSS_ADDITIONAL_PRINCIPALS` (comma-separated ARNs) |
+
+The caller identity is auto-detected via `sts:GetCallerIdentity`.
+
+### Idempotency
+
+The script is safe to re-run:
+- Existing IAM roles, AOSS policies, and collections are detected and skipped
+- Existing ML connectors and models are found by name and reused
+- Existing pipelines and indexes are detected and skipped
+- The data access policy is updated (not duplicated) if it already exists
+
+### Output
+
+On completion, the script prints the `OPENSEARCH_ENDPOINT` to add to your `.env` file.
+
+### Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| "Access denied" on Phase 3 OpenSearch calls | Data access policy not propagated yet | Wait 30–60 seconds and re-run (the script includes a built-in delay) |
+| "Collection not found" | Collection deleted or wrong name | Check `OPENSEARCH_COLLECTION_NAME` |
+| "Model deployment failed" | Connector role trust policy incorrect | Verify the role's trust policy allows `aoss.amazonaws.com` |
+| Embedding not populated in verification | Ingest pipeline or model not working | Check model state in Dashboard Dev Tools: `GET /_plugins/_ml/models/<MODEL_ID>` |
+
+---
+
+## Manual Setup (Dashboard Dev Tools)
+
+If you prefer to run the steps manually in **OpenSearch Dashboard → Dev Tools**, use the commands below. These correspond to Phase 3 of the automated script (the IAM and AOSS prerequisites from Phases 1–2 must already be in place).
+
+### 1. Create the ML Connector (Bedrock Titan Embed v2)
 
 ```json
 POST /_plugins/_ml/connectors/_create
@@ -47,7 +119,7 @@ POST /_plugins/_ml/connectors/_create
 
 ---
 
-## 2. Register the Model
+### 2. Register the Model
 
 Replace `<CONNECTOR_ID>` with the value from step 1.
 
@@ -65,7 +137,7 @@ POST /_plugins/_ml/models/_register
 
 ---
 
-## 3. Deploy the Model
+### 3. Deploy the Model
 
 Replace `<MODEL_ID>` with the value from step 2.
 
@@ -83,7 +155,7 @@ You should see `"model_state": "DEPLOYED"`.
 
 ---
 
-## 4. Create the Ingest Pipeline
+### 4. Create the Ingest Pipeline
 
 Replace `<MODEL_ID>` with the value from step 2.
 
@@ -106,7 +178,7 @@ PUT /_ingest/pipeline/sagemaker-docs-ingest-pipeline
 
 ---
 
-## 5. Create the Search Pipeline
+### 5. Create the Search Pipeline
 
 ```json
 PUT /_search/pipeline/sagemaker-docs-search-pipeline
@@ -134,7 +206,7 @@ PUT /_search/pipeline/sagemaker-docs-search-pipeline
 
 ---
 
-## 6. Create the Index
+### 6. Create the Index
 
 ```json
 PUT /sagemaker-docs
@@ -171,7 +243,7 @@ PUT /sagemaker-docs
 
 ---
 
-## 7. Verify
+### 7. Verify
 
 Test the ingest pipeline by indexing a single document:
 
@@ -211,3 +283,4 @@ POST /sagemaker-docs/_delete_by_query
   - A trust policy allowing `aoss.amazonaws.com` to assume it.
 - Pipeline names (`sagemaker-docs-ingest-pipeline`, `sagemaker-docs-search-pipeline`) must match the constants in `app/services/opensearch_service.py`.
 - Index name (`sagemaker-docs`) must match `OPENSEARCH_INDEX_NAME` in `.env`.
+- For a deep dive on IAM and AOSS permissions, see `docs/opensearch-aoss-permissions-summary.md`.

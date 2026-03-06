@@ -98,8 +98,9 @@ See `docs/running-tests.md` for a full DO / DON'T reference.
 │   └── reranking_strategies.ipynb   # Experiment 2: reranking strategies
 ├── plans/                 # Planning/prompt documents
 ├── scripts/               # Utility/smoke-test scripts
+│   └── setup_opensearch.py           # Automated AOSS infrastructure setup (IAM, policies, collection, index)
 ├── docs/
-│   └── opensearch_index_setup.md     # Dashboard Dev Tools commands for one-time OpenSearch setup
+│   └── opensearch_index_setup.md     # OpenSearch setup guide (automated + manual reference)
 ├── wiki/                  # GitHub Wiki (git submodule)
 ├── CLAUDE.md                  # Claude Code entry point (points to Copilot instruction files)
 ├── main.py                # FastAPI app entry point (lifespan, routers)
@@ -154,3 +155,5 @@ Do not leave stale references. If a file, class, route, agent, or tool was renam
 ## Infrastructure Setup
 
 Some services require one-time infrastructure setup (e.g., OpenSearch pipelines, index creation). These should be documented as runnable scripts or dashboard instructions in a dedicated folder (e.g., `docs/opensearch_index_setup.md`), **not** embedded in application startup code — unless the provisioning is idempotent and lightweight (like `S3SetupService` creating a bucket if absent, or `OpenSearchSetupService` bulk-indexing local docs with dedup).
+
+The complete AOSS infrastructure (IAM roles, collection, pipelines, index) is automated via `scripts/setup_opensearch.py`. Run it once before first use: `conda run --prefix .venv python scripts/setup_opensearch.py`.
