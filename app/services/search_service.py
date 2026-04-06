@@ -17,7 +17,6 @@ from app.models.search import (
     SearchResponse,
 )
 from app.services.config import SearchConfig
-from app.services.document_service import DocumentService
 
 logger = logging.getLogger(__name__)
 
@@ -33,9 +32,8 @@ class SearchService:
     ``asyncio.to_thread()`` so FastAPI routes remain non-blocking.
     """
 
-    def __init__(self, config: SearchConfig, document_service: DocumentService) -> None:
+    def __init__(self, config: SearchConfig) -> None:
         self._config = config
-        self._document_service = document_service
 
     # ------------------------------------------------------------------
     # Client factory (replaceable in tests)
@@ -135,9 +133,11 @@ class SearchService:
         chunk_size: int = 500,
         chunk_overlap: int = 50,
     ) -> IndexDocumentResponse:
-        """Index a single document, splitting it into chunks first.
+        """Index a single document via Lambda.
 
-        Skips indexing if the filename is already present in the index.
+        Lambda handles chunking and dedup (skip_existing). A single Lambda
+        call replaces the previous pattern of document_exists + chunk_text
+        + index_documents.
 
         Args:
             filename: Source document filename.
@@ -154,21 +154,12 @@ class SearchService:
         if not content or not content.strip():
             raise ValueError("content must be provided")
 
-        # Skip if already indexed.
-        if await self.document_exists(filename=filename):
-            return IndexDocumentResponse(filename=filename, chunk_count=0, doc_ids=[], skipped=True)
-
-        chunks = self._document_service.chunk_text(
-            text=content,
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
-        )
-        if not chunks:
-            return IndexDocumentResponse(filename=filename, chunk_count=0, doc_ids=[], skipped=False)
-
         payload = {
             "action": "index_documents",
-            "documents": [{"filename": filename, "chunks": chunks}],
+            "documents": [{"filename": filename, "content": content}],
+            "skip_existing": True,
+            "chunk_size": chunk_size,
+            "chunk_overlap": chunk_overlap,
         }
 
         try:
@@ -178,6 +169,10 @@ class SearchService:
         except Exception as exc:
             logger.exception("Search index_document Lambda call failed for %s", filename)
             raise SearchServiceError(f"Failed to index document: {filename}") from exc
+
+        skipped_filenames = raw.get("skipped_filenames", [])
+        if filename in skipped_filenames:
+            return IndexDocumentResponse(filename=filename, chunk_count=0, doc_ids=[], skipped=True)
 
         doc_ids = raw.get("doc_ids", [])
         return IndexDocumentResponse(

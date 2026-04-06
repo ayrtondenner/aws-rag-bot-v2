@@ -294,27 +294,63 @@ def _handle_search(event: dict[str, Any]) -> dict[str, Any]:
 
 
 def _handle_index_documents(event: dict[str, Any]) -> dict[str, Any]:
+    """Index documents into the search index.
+
+    Each document can provide either:
+    - ``chunks``: list of pre-chunked strings (backward compatible)
+    - ``content``: raw text that will be chunked by Lambda
+
+    Optional ``skip_existing`` (default False) skips documents whose
+    filename is already in the corpus.
+    """
+
     global _corpus, _artifacts_loaded
 
     _load_artifacts()
     if _corpus is None:
         _corpus = []
 
-    documents = event["documents"]  # [{filename, chunks: [str]}]
+    skip_existing = event.get("skip_existing", False)
+    existing_filenames = {doc["filename"] for doc in _corpus} if skip_existing else set()
+
+    documents = event["documents"]
     all_doc_ids: list[str] = []
+    skipped_filenames: list[str] = []
 
     for doc in documents:
         filename = doc["filename"]
-        chunks = doc["chunks"]
+
+        if skip_existing and filename in existing_filenames:
+            skipped_filenames.append(filename)
+            continue
+
+        # Determine chunks: use pre-chunked if provided, otherwise chunk raw content
+        if "chunks" in doc:
+            chunks = doc["chunks"]
+        elif "content" in doc:
+            from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+            chunk_size = event.get("chunk_size", 500)
+            chunk_overlap = event.get("chunk_overlap", 50)
+            splitter = RecursiveCharacterTextSplitter(
+                chunk_size=chunk_size, chunk_overlap=chunk_overlap,
+            )
+            chunks = splitter.split_text(doc["content"])
+        else:
+            continue
+
         for chunk in chunks:
             doc_id = str(uuid.uuid4())
             _corpus.append({"doc_id": doc_id, "filename": filename, "content": chunk})
             all_doc_ids.append(doc_id)
 
-    _rebuild_indexes()
-    _save_artifacts()
+        existing_filenames.add(filename)
 
-    return {"doc_ids": all_doc_ids}
+    if all_doc_ids:
+        _rebuild_indexes()
+        _save_artifacts()
+
+    return {"doc_ids": all_doc_ids, "skipped_filenames": skipped_filenames}
 
 
 def _handle_document_exists(event: dict[str, Any]) -> dict[str, Any]:
