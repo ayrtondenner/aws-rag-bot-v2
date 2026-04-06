@@ -40,54 +40,60 @@ class S3Config:
 
 
 @dataclass(frozen=True)
-class OpenSearchConfig:
-    """Configuration for connecting to an OpenSearch Serverless collection."""
+class SearchConfig:
+    """Configuration for the FAISS + BM25 + S3 + Lambda search backend."""
 
-    endpoint: str
-    index_name: str
+    lambda_function_name: str
+    index_bucket: str
+    index_prefix: str = "search-index/"
     region: Optional[str] = None
-    service_name: str = "aoss"
-    timeout_seconds: int = 30
+    bm25_weight: float = 0.3
+    vector_weight: float = 0.7
+    lambda_timeout_seconds: int = 30
 
     @staticmethod
-    def from_env() -> "OpenSearchConfig":
-        """Create an OpenSearchConfig from environment variables.
+    def from_env() -> "SearchConfig":
+        """Create a SearchConfig from environment variables.
 
         Returns:
-            An OpenSearchConfig populated from env vars.
+            A SearchConfig populated from env vars.
 
         Raises:
             ValueError: If required env vars are missing.
         """
 
-        endpoint = (os.getenv("OPENSEARCH_ENDPOINT") or "").strip()
-        if not endpoint:
-            raise ValueError("Missing required environment variable: OPENSEARCH_ENDPOINT")
+        lambda_function_name = (os.getenv("SEARCH_LAMBDA_FUNCTION_NAME") or "").strip()
+        if not lambda_function_name:
+            raise ValueError("Missing required environment variable: SEARCH_LAMBDA_FUNCTION_NAME")
 
-        index_name = (os.getenv("OPENSEARCH_INDEX_NAME") or "").strip()
-        if not index_name:
-            raise ValueError("Missing required environment variable: OPENSEARCH_INDEX_NAME")
+        index_bucket = (os.getenv("SEARCH_INDEX_BUCKET") or "").strip()
+        if not index_bucket:
+            raise ValueError("Missing required environment variable: SEARCH_INDEX_BUCKET")
+
+        index_prefix = (os.getenv("SEARCH_INDEX_PREFIX") or "").strip() or "search-index/"
 
         region = (
-            os.getenv("OPENSEARCH_REGION")
-            or os.getenv("AWS_REGION")
+            os.getenv("AWS_REGION")
             or os.getenv("AWS_DEFAULT_REGION")
         )
 
-        service_name = (os.getenv("OPENSEARCH_SERVICE_NAME") or "").strip() or "aoss"
+        bm25_weight = float(os.getenv("BM25_WEIGHT", "0.3"))
+        vector_weight = float(os.getenv("VECTOR_WEIGHT", "0.7"))
 
-        timeout_raw = (os.getenv("OPENSEARCH_TIMEOUT_SECONDS") or "").strip()
-        timeout_seconds = 30
+        timeout_raw = (os.getenv("SEARCH_LAMBDA_TIMEOUT_SECONDS") or "").strip()
+        lambda_timeout_seconds = 30
         if timeout_raw:
             try:
-                timeout_seconds = int(timeout_raw)
+                lambda_timeout_seconds = int(timeout_raw)
             except ValueError as exc:
-                raise ValueError("OPENSEARCH_TIMEOUT_SECONDS must be an integer") from exc
+                raise ValueError("SEARCH_LAMBDA_TIMEOUT_SECONDS must be an integer") from exc
 
-        return OpenSearchConfig(
-            endpoint=endpoint,
-            index_name=index_name,
+        return SearchConfig(
+            lambda_function_name=lambda_function_name,
+            index_bucket=index_bucket,
+            index_prefix=index_prefix,
             region=region,
-            service_name=service_name,
-            timeout_seconds=timeout_seconds,
+            bm25_weight=bm25_weight,
+            vector_weight=vector_weight,
+            lambda_timeout_seconds=lambda_timeout_seconds,
         )

@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.error_handlers import register_error_handlers
 from app.routes.document import router as document_router
-from app.routes.opensearch import router as opensearch_router
+from app.routes.search import router as search_router
 from app.routes.s3 import router as s3_router
 
 @pytest.fixture(scope='session')
@@ -25,7 +25,7 @@ def fastapi_app() -> FastAPI:
     app = FastAPI()
     app.include_router(s3_router)
     app.include_router(document_router)
-    app.include_router(opensearch_router)
+    app.include_router(search_router)
     register_error_handlers(app)
 
     return app

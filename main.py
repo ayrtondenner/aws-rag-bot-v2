@@ -7,10 +7,10 @@ from fastapi import FastAPI
 from app.error_handlers import register_error_handlers
 from app.routes.s3 import router as s3_router
 from app.routes.document import router as document_router
-from app.routes.opensearch import router as opensearch_router
+from app.routes.search import router as search_router
 from app.services.dependencies import (
-    get_opensearch_setup_service,
     get_s3_setup_service,
+    get_search_setup_service,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,9 +31,6 @@ async def lifespan(app: FastAPI):
     _ensure_logging()
 
     # NOTE: FastAPI lifespan runs with only the `app` instance (no per-request `Request`).
-    # Some dependency helpers (like `get_opensearch_setup_service(request)`) require a Request
-    # because they pull shared resources from `request.app.state`.
-    #
     # To keep a single, reusable HTTP client for the whole app lifetime, we create an
     # aiohttp.ClientSession here and store it on `app.state`. App-level dependency helpers
     # can then retrieve it (without needing a Request) during startup.
@@ -53,15 +50,15 @@ async def lifespan(app: FastAPI):
         # Provision infra.
         await get_s3_setup_service().setup_bucket()
 
-        # Bulk-index local sagemaker-docs into OpenSearch (idempotent — skips existing).
-        # Unlike S3 setup, OpenSearch failures are non-fatal: the app can still serve
-        # requests; documents can be indexed later via the /opensearch/index-local-docs endpoint.
+        # Ensure Lambda + FAISS/BM25 artifacts exist and bulk-index local docs (idempotent).
+        # Unlike S3 setup, search setup failures are non-fatal: the app can still serve
+        # requests; documents can be indexed later via the /search/index-local-docs endpoint.
         try:
-            await get_opensearch_setup_service().setup_index()
+            await get_search_setup_service().setup_index()
         except Exception:
             logger.warning(
-                "OpenSearch setup failed — local docs were not indexed. "
-                "You can index them later via POST /opensearch/index-local-docs.",
+                "Search setup failed — local docs were not indexed. "
+                "You can index them later via POST /search/index-local-docs.",
                 exc_info=True,
             )
 
@@ -74,7 +71,7 @@ app = FastAPI(lifespan=lifespan)
 
 app.include_router(s3_router)
 app.include_router(document_router)
-app.include_router(opensearch_router)
+app.include_router(search_router)
 register_error_handlers(app)
 
 

@@ -1,0 +1,18 @@
+{
+  "enabledPlugins": {
+    "superpowers@claude-plugins-official": true,
+    "code-review@claude-plugins-official": true,
+    "code-simplifier@claude-plugins-official": true,
+    "feature-dev@claude-plugins-official": true
+  },
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:*)",
+      "Bash(ls:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(find:*)",
+      "Bash(wc -l:*)",
+      "Bash(gh issue create:*)"
+    ]
+  }
+}
