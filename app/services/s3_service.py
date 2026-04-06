@@ -55,7 +55,7 @@ class S3Service:
             if status_enum == HTTPStatus.NOT_FOUND or code in {"NoSuchBucket", "NotFound"}:
                 return False
             if status_enum == HTTPStatus.FORBIDDEN or code in {"AccessDenied"}:
-                return False
+                raise S3ServiceError(f"Access denied for S3 bucket: {bucket_name}") from exc
             logger.exception("S3 bucket_exists failed")
             raise S3ServiceError(f"Failed to check if S3 bucket exists: {bucket_name}") from exc
         except Exception as exc:

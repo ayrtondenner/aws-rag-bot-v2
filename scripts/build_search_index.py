@@ -43,8 +43,15 @@ from tqdm import tqdm
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(_PROJECT_ROOT / ".env")
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s: %(message)s",
+    stream=sys.stdout,
+)
 logger = logging.getLogger(__name__)
+
+# Force unbuffered output so progress is visible in all terminals
+sys.stdout.reconfigure(line_buffering=True)  # type: ignore[attr-defined]
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -125,10 +132,13 @@ def _embed_corpus(corpus: list[dict[str, str]]) -> np.ndarray:
     """Embed all corpus chunks, returning a (N, dim) array."""
 
     bedrock = boto3.client("bedrock-runtime", region_name=AWS_REGION)
+    total = len(corpus)
     vectors = []
-    for doc in tqdm(corpus, desc="Generating embeddings", unit="chunk"):
+    for i, doc in enumerate(tqdm(corpus, desc="Generating embeddings", unit="chunk", file=sys.stdout)):
         vec = _embed_text(bedrock, doc["content"])
         vectors.append(vec)
+        if (i + 1) % 50 == 0 or (i + 1) == total:
+            print(f"  Embedded {i + 1}/{total} chunks", flush=True)
     return np.vstack(vectors)
 
 

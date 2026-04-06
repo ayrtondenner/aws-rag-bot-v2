@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import pytest
 from fastapi.testclient import TestClient
 
 from app.models.s3 import FileItem
@@ -151,9 +150,14 @@ def test_s3_get_file_content_maps_unexpected_error_to_500(client, fastapi_app):
         fastapi_app.dependency_overrides.clear()
 
 
-def test_s3_get_file_content_query_validation_422(client):
-    resp = client.get("/s3/file/content")
-    assert resp.status_code == 422
+def test_s3_get_file_content_query_validation_422(client, fastapi_app):
+    stub = StubS3Service()
+    fastapi_app.dependency_overrides[get_s3_service] = lambda: stub
+    try:
+        resp = client.get("/s3/file/content")
+        assert resp.status_code == 422
 
-    resp = client.get("/s3/file/content?file_name=")
-    assert resp.status_code == 422
+        resp = client.get("/s3/file/content?file_name=")
+        assert resp.status_code == 422
+    finally:
+        fastapi_app.dependency_overrides.clear()
