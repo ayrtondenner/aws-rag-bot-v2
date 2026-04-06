@@ -370,6 +370,79 @@ def _handle_delete_by_filename(event: dict[str, Any]) -> dict[str, Any]:
     return {"deleted_count": deleted_count}
 
 
+def _handle_build_index(event: dict[str, Any]) -> dict[str, Any]:
+    """Build index from raw documents: chunk, embed, index, and save.
+
+    Accepts a list of raw documents and handles the full pipeline:
+    chunking, embedding, FAISS+BM25 index building, and S3 persistence.
+
+    Event fields:
+        documents: list of {filename, content} dicts
+        chunk_size: int (default 500)
+        chunk_overlap: int (default 50)
+        skip_existing: bool (default True)
+    """
+
+    global _corpus, _faiss_index, _bm25_index, _artifacts_loaded
+
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+    documents = event["documents"]
+    chunk_size = event.get("chunk_size", 500)
+    chunk_overlap = event.get("chunk_overlap", 50)
+    skip_existing = event.get("skip_existing", True)
+
+    # Try loading existing artifacts; initialize empty if none exist
+    try:
+        _load_artifacts()
+    except Exception:
+        logger.info("No existing artifacts found — initializing empty index")
+        _corpus = []
+        _faiss_index = faiss.IndexFlatIP(EMBEDDING_DIM)
+        _bm25_index = BM25Okapi([])
+        _artifacts_loaded = True
+
+    if _corpus is None:
+        _corpus = []
+
+    existing_filenames = {doc["filename"] for doc in _corpus}
+
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size, chunk_overlap=chunk_overlap,
+    )
+
+    processed_count = 0
+    skipped_count = 0
+    total_chunks_added = 0
+
+    for doc in documents:
+        filename = doc["filename"]
+        content = doc["content"]
+
+        if skip_existing and filename in existing_filenames:
+            skipped_count += 1
+            continue
+
+        chunks = splitter.split_text(content)
+        for chunk in chunks:
+            doc_id = str(uuid.uuid4())
+            _corpus.append({"doc_id": doc_id, "filename": filename, "content": chunk})
+            total_chunks_added += 1
+
+        existing_filenames.add(filename)
+        processed_count += 1
+
+    if total_chunks_added > 0:
+        _rebuild_indexes()
+        _save_artifacts()
+
+    return {
+        "processed_count": processed_count,
+        "skipped_count": skipped_count,
+        "total_chunks_added": total_chunks_added,
+    }
+
+
 def _handle_get_stats(event: dict[str, Any]) -> dict[str, Any]:  # noqa: ARG001
     _load_artifacts()
     assert _corpus is not None
@@ -388,6 +461,7 @@ def _handle_get_stats(event: dict[str, Any]) -> dict[str, Any]:  # noqa: ARG001
 _ACTION_MAP = {
     "search": _handle_search,
     "index_documents": _handle_index_documents,
+    "build_index": _handle_build_index,
     "document_exists": _handle_document_exists,
     "list_documents": _handle_list_documents,
     "delete_document": _handle_delete_document,

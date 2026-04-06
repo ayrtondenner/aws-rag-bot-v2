@@ -2,17 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import io
-import json
 import logging
 import os
-import pickle
-import tempfile
-import uuid
 import zipfile
 from pathlib import Path
 
 import boto3
-import numpy as np
 
 from app.models.search import BulkIndexResponse, IndexDocumentRequest
 from app.services.config import SearchConfig
@@ -66,7 +61,7 @@ class SearchSetupService:
 
         if not artifacts_exist:
             logger.info("Search setup: Building FAISS/BM25 artifacts...")
-            await asyncio.to_thread(self._build_and_upload_artifacts)
+            await self._build_and_upload_artifacts()
 
         if not lambda_exists:
             logger.info("Search setup: Creating Lambda function...")
@@ -104,77 +99,32 @@ class SearchSetupService:
     # Artifact building
     # ------------------------------------------------------------------
 
-    def _build_and_upload_artifacts(self) -> None:
-        """Read local docs, chunk, embed, build FAISS+BM25, upload to S3."""
-
-        import faiss
-        from langchain_text_splitters import RecursiveCharacterTextSplitter
-        from rank_bm25 import BM25Okapi
+    async def _build_and_upload_artifacts(self) -> None:
+        """Read local docs and delegate index building to Lambda."""
 
         local = self._document_service.list_local_sagemaker_docs()
         filenames: list[str] = local.get("documents", [])  # type: ignore
 
-        splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
-        corpus: list[dict[str, str]] = []
+        documents: list[dict[str, str]] = []
         for fname in filenames:
             try:
                 content = self._document_service.get_local_sagemaker_doc_content(filename=fname)
-                chunks = splitter.split_text(content)
-                for chunk in chunks:
-                    corpus.append({
-                        "doc_id": str(uuid.uuid4()),
-                        "filename": fname,
-                        "content": chunk,
-                    })
+                documents.append({"filename": fname, "content": content})
             except (FileNotFoundError, ValueError):
                 logger.warning("Skipping unreadable doc: %s", fname)
 
-        if not corpus:
+        if not documents:
             logger.warning("No documents found to build index")
             return
 
-        logger.info("Embedding %d chunks via Bedrock...", len(corpus))
-        bedrock = boto3.client("bedrock-runtime", region_name=self._config.region)
-        vectors = []
-        for doc in corpus:
-            response = bedrock.invoke_model(
-                modelId=EMBEDDING_MODEL_ID,
-                body=json.dumps({"inputText": doc["content"]}),
-                contentType="application/json",
-            )
-            body = json.loads(response["body"].read())
-            vec = np.array(body["embedding"], dtype=np.float32)
-            norm = np.linalg.norm(vec)
-            if norm > 0:
-                vec /= norm
-            vectors.append(vec)
-
-        all_vectors = np.vstack(vectors)
-
-        # Build FAISS index
-        faiss_index = faiss.IndexFlatIP(EMBEDDING_DIM)
-        faiss_index.add(all_vectors)
-
-        # Build BM25 index
-        tokenized = [doc["content"].lower().split() for doc in corpus]
-        bm25_index = BM25Okapi(tokenized)
-
-        # Upload to S3
-        s3 = boto3.client("s3", region_name=self._config.region)
-        prefix = self._config.index_prefix
-
-        tmp = tempfile.gettempdir()
-        faiss_path = os.path.join(tmp, "faiss.index")
-        faiss.write_index(faiss_index, faiss_path)
-        s3.upload_file(faiss_path, self._config.index_bucket, f"{prefix}faiss.index")
-
-        corpus_bytes = pickle.dumps(corpus)
-        s3.put_object(Bucket=self._config.index_bucket, Key=f"{prefix}corpus.pkl", Body=corpus_bytes)
-
-        bm25_bytes = pickle.dumps(bm25_index)
-        s3.put_object(Bucket=self._config.index_bucket, Key=f"{prefix}bm25.pkl", Body=bm25_bytes)
-
-        logger.info("Uploaded search artifacts to s3://%s/%s (%d chunks)", self._config.index_bucket, prefix, len(corpus))
+        logger.info("Building index via Lambda for %d documents...", len(documents))
+        result = await self._search.build_index(documents=documents)
+        logger.info(
+            "Index built via Lambda: processed=%d, skipped=%d, chunks=%d",
+            result["processed_count"],
+            result["skipped_count"],
+            result["total_chunks_added"],
+        )
 
     # ------------------------------------------------------------------
     # Lambda deployment

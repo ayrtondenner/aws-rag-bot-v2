@@ -235,6 +235,61 @@ class SearchService:
         )
 
     # ------------------------------------------------------------------
+    # Build index (bulk from raw documents)
+    # ------------------------------------------------------------------
+
+    async def build_index(
+        self,
+        *,
+        documents: list[dict[str, str]],
+        chunk_size: int = 500,
+        chunk_overlap: int = 50,
+        skip_existing: bool = True,
+        batch_size: int = 50,
+    ) -> dict[str, int]:
+        """Build the search index from raw documents via Lambda.
+
+        Sends documents in batches to the Lambda ``build_index`` action,
+        which handles chunking, embedding, and index persistence.
+
+        Args:
+            documents: List of ``{filename, content}`` dicts.
+            chunk_size: Target chunk size in characters.
+            chunk_overlap: Overlap between consecutive chunks.
+            skip_existing: Skip documents already in the index.
+            batch_size: Number of documents per Lambda invocation.
+
+        Returns:
+            Aggregated counts: ``{processed_count, skipped_count, total_chunks_added}``.
+        """
+
+        totals = {"processed_count": 0, "skipped_count": 0, "total_chunks_added": 0}
+
+        for i in range(0, len(documents), batch_size):
+            batch = documents[i : i + batch_size]
+            payload = {
+                "action": "build_index",
+                "documents": batch,
+                "chunk_size": chunk_size,
+                "chunk_overlap": chunk_overlap,
+                "skip_existing": skip_existing,
+            }
+
+            try:
+                raw = await asyncio.to_thread(self._invoke_lambda, payload)
+            except SearchServiceError:
+                raise
+            except Exception as exc:
+                logger.exception("build_index Lambda call failed for batch %d", i)
+                raise SearchServiceError(f"Failed to build index (batch starting at {i})") from exc
+
+            totals["processed_count"] += raw.get("processed_count", 0)
+            totals["skipped_count"] += raw.get("skipped_count", 0)
+            totals["total_chunks_added"] += raw.get("total_chunks_added", 0)
+
+        return totals
+
+    # ------------------------------------------------------------------
     # Search
     # ------------------------------------------------------------------
 
