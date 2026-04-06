@@ -91,6 +91,36 @@ async def search_list_indexed_documents() -> IndexedDocumentsResponse:
     return IndexedDocumentsResponse(count=len(filenames), filenames=filenames)
 
 
+async def search_delete_document(*, doc_id: str) -> dict[str, bool]:
+    """Delete a single document chunk by its ID.
+
+    Args:
+        doc_id: The document chunk ID to delete.
+
+    Returns:
+        JSON with {deleted: true/false}.
+    """
+
+    svc = _get_search_service()
+    deleted = await svc.delete_document(doc_id=doc_id)
+    return {"deleted": deleted}
+
+
+async def search_delete_by_filename(*, filename: str) -> dict[str, int]:
+    """Delete all chunks for a given source filename.
+
+    Args:
+        filename: The source document filename whose chunks should be removed.
+
+    Returns:
+        JSON with {deleted_count: int}.
+    """
+
+    svc = _get_search_service()
+    count = await svc.delete_documents_by_filename(filename=filename)
+    return {"deleted_count": count}
+
+
 async def search_get_index_stats() -> IndexStatsResponse:
     """Get basic statistics for the search index (document count, status).
 
@@ -111,5 +141,7 @@ def build_search_tools() -> list[ToolUnion]:
         FunctionTool(search_document_exists),
         FunctionTool(search_list_indexed_documents),
         FunctionTool(search_get_index_stats),
+        FunctionTool(search_delete_document),
+        FunctionTool(search_delete_by_filename),
         FunctionTool(transfer_to_root),
     ]

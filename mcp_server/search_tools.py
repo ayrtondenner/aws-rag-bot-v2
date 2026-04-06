@@ -18,7 +18,7 @@ from mcp_server import mcp
 @mcp.resource(
     name="search_query",
     description="Search indexed SageMaker documents using hybrid (BM25 + vector), text-only, or vector-only.",
-    uri="search://query/{?query,size,search_type}",
+    uri="search://query/{query}",
 )
 async def search_query(
     *,
@@ -43,10 +43,9 @@ async def search_query(
     return await shared_search.search_query(query=query, size=size, search_type=search_type)
 
 
-@mcp.resource(
+@mcp.tool(
     name="search_index_document",
     description="Index a single document (auto-chunks, skips duplicates).",
-    uri="search://index/{?filename,content}",
 )
 async def search_index_document(
     *,
@@ -115,3 +114,43 @@ async def search_get_index_stats() -> IndexStatsResponse:
     """
 
     return await shared_search.search_get_index_stats()
+
+
+@mcp.tool(
+    name="search_delete_document",
+    description="Delete a single document chunk by its ID.",
+)
+async def search_delete_document(
+    *,
+    doc_id: Annotated[str, Field(..., description="The document chunk ID to delete.")],
+) -> dict[str, bool]:
+    """Delete a single document chunk by its ID.
+
+    Args:
+        doc_id: The document chunk ID.
+
+    Returns:
+        JSON with {deleted: true/false}.
+    """
+
+    return await shared_search.search_delete_document(doc_id=doc_id)
+
+
+@mcp.tool(
+    name="search_delete_by_filename",
+    description="Delete all indexed chunks for a given source filename.",
+)
+async def search_delete_by_filename(
+    *,
+    filename: Annotated[str, Field(..., description="Source document filename whose chunks to delete.")],
+) -> dict[str, int]:
+    """Delete all chunks for a given source filename.
+
+    Args:
+        filename: The source document filename.
+
+    Returns:
+        JSON with {deleted_count: int}.
+    """
+
+    return await shared_search.search_delete_by_filename(filename=filename)
