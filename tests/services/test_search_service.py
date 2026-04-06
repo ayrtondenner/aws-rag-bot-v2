@@ -9,7 +9,6 @@ import pytest
 
 from app.models.search import IndexDocumentRequest
 from app.services.config import SearchConfig
-from app.services.document_service import DocumentService
 from app.services.search_service import SearchService, SearchServiceError
 
 
@@ -48,25 +47,6 @@ class FakeLambdaClient:
 
 
 # ---------------------------------------------------------------------------
-# Stub DocumentService (returns predictable chunks)
-# ---------------------------------------------------------------------------
-
-
-class StubDocumentService(DocumentService):
-    """DocumentService that skips Bedrock and returns canned chunk results."""
-
-    def __init__(self, chunks: list[str] | None = None) -> None:
-        self._embedding_model_id = ""
-        self._embedding_dim = 1024
-        self._chunks = chunks if chunks is not None else ["chunk-0", "chunk-1"]
-
-    def chunk_text(self, *, text: str, chunk_size: int = 500, chunk_overlap: int = 50) -> list[str]:
-        if not text or not text.strip():
-            return []
-        return list(self._chunks)
-
-
-# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -78,12 +58,8 @@ _DEFAULT_CONFIG = SearchConfig(
 )
 
 
-def _make_service(
-    fake: FakeLambdaClient,
-    stub_doc: StubDocumentService | None = None,
-) -> SearchService:
-    doc = stub_doc or StubDocumentService()
-    service = SearchService(config=_DEFAULT_CONFIG, document_service=doc)
+def _make_service(fake: FakeLambdaClient) -> SearchService:
+    service = SearchService(config=_DEFAULT_CONFIG)
     service._client = lambda: fake  # type: ignore[method-assign]
     return service
 
@@ -169,21 +145,10 @@ def test_list_indexed_documents_wraps_errors():
 # ===========================================================================
 
 
-def test_index_document_indexes_chunks():
+def test_index_document_indexes_via_lambda():
+    """Single Lambda call with content field — no document_exists round-trip."""
     fake = FakeLambdaClient()
-    call_count = {"n": 0}
-    original_invoke = fake.invoke
-
-    def _invoke(**kwargs: Any) -> dict[str, Any]:
-        call_count["n"] += 1
-        payload = json.loads(kwargs["Payload"])
-        if payload["action"] == "document_exists":
-            fake.set_response({"exists": False})
-        elif payload["action"] == "index_documents":
-            fake.set_response({"doc_ids": ["id-0", "id-1"]})
-        return original_invoke(**kwargs)
-
-    fake.invoke = _invoke  # type: ignore[method-assign]
+    fake.set_response({"doc_ids": ["id-0", "id-1"], "skipped_filenames": []})
     service = _make_service(fake)
 
     resp = asyncio.run(service.index_document(filename="doc.md", content="some text"))
@@ -192,17 +157,24 @@ def test_index_document_indexes_chunks():
     assert resp.doc_ids == ["id-0", "id-1"]
     assert resp.skipped is False
 
+    # Single Lambda call — no document_exists preceding it
+    assert len(fake.calls) == 1
+    payload = json.loads(fake.calls[0][1]["Payload"])
+    assert payload["action"] == "index_documents"
+    assert payload["documents"][0]["content"] == "some text"
+    assert payload["skip_existing"] is True
+
 
 def test_index_document_skips_when_already_indexed():
     fake = FakeLambdaClient()
-    fake.set_response({"exists": True})
+    fake.set_response({"doc_ids": [], "skipped_filenames": ["existing.md"]})
     service = _make_service(fake)
 
     resp = asyncio.run(service.index_document(filename="existing.md", content="text"))
     assert resp.skipped is True
     assert resp.chunk_count == 0
     assert resp.doc_ids == []
-    # Only document_exists was called
+    # Still only one Lambda call (index_documents with skip_existing)
     assert len(fake.calls) == 1
 
 
@@ -222,11 +194,11 @@ def test_index_document_raises_on_blank_content():
         asyncio.run(service.index_document(filename="doc.md", content=""))
 
 
-def test_index_document_empty_chunks_returns_zero():
+def test_index_document_no_chunks_returns_zero():
+    """Lambda returns no doc_ids when content produces no chunks."""
     fake = FakeLambdaClient()
-    fake.set_response({"exists": False})
-    stub_doc = StubDocumentService(chunks=[])
-    service = _make_service(fake, stub_doc)
+    fake.set_response({"doc_ids": [], "skipped_filenames": []})
+    service = _make_service(fake)
 
     resp = asyncio.run(service.index_document(filename="tiny.md", content="x"))
     assert resp.chunk_count == 0
@@ -245,18 +217,16 @@ def test_bulk_index_documents_mixes_new_and_existing():
 
     def _invoke(**kwargs: Any) -> dict[str, Any]:
         payload = json.loads(kwargs["Payload"])
-        if payload["action"] == "document_exists":
-            if payload["filename"] == "old.md":
-                fake.set_response({"exists": True})
+        if payload["action"] == "index_documents":
+            filename = payload["documents"][0]["filename"]
+            if filename == "old.md":
+                fake.set_response({"doc_ids": [], "skipped_filenames": ["old.md"]})
             else:
-                fake.set_response({"exists": False})
-        elif payload["action"] == "index_documents":
-            fake.set_response({"doc_ids": ["new-1"]})
+                fake.set_response({"doc_ids": ["new-1"], "skipped_filenames": []})
         return original_invoke(**kwargs)
 
     fake.invoke = _invoke  # type: ignore[method-assign]
-    stub_doc = StubDocumentService(chunks=["only-chunk"])
-    service = _make_service(fake, stub_doc)
+    service = _make_service(fake)
 
     docs = [
         IndexDocumentRequest(filename="old.md", content="already indexed"),
@@ -272,7 +242,15 @@ def test_bulk_index_documents_mixes_new_and_existing():
 
 def test_bulk_index_documents_all_skipped():
     fake = FakeLambdaClient()
-    fake.set_response({"exists": True})
+    original_invoke = fake.invoke
+
+    def _invoke(**kwargs: Any) -> dict[str, Any]:
+        payload = json.loads(kwargs["Payload"])
+        filename = payload["documents"][0]["filename"]
+        fake.set_response({"doc_ids": [], "skipped_filenames": [filename]})
+        return original_invoke(**kwargs)
+
+    fake.invoke = _invoke  # type: ignore[method-assign]
     service = _make_service(fake)
 
     docs = [

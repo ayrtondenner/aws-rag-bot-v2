@@ -43,10 +43,7 @@ def get_search_service() -> SearchService:
         A SearchService configured from environment variables.
     """
 
-    return SearchService(
-        config=SearchConfig.from_env(),
-        document_service=get_document_service(),
-    )
+    return SearchService(config=SearchConfig.from_env())
 
 
 def get_http_session_from_app(app: FastAPI) -> aiohttp.ClientSession:
