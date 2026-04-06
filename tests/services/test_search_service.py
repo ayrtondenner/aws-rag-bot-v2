@@ -478,3 +478,79 @@ def test_invoke_lambda_raises_on_error_field():
 
     with pytest.raises(SearchServiceError, match="Search operation failed"):
         asyncio.run(service.search(query="test"))
+
+
+# ===========================================================================
+# build_index
+# ===========================================================================
+
+
+def test_build_index_sends_correct_payload():
+    fake = FakeLambdaClient()
+    fake.set_response({"processed_count": 2, "skipped_count": 0, "total_chunks_added": 10})
+    service = _make_service(fake)
+
+    docs = [
+        {"filename": "a.md", "content": "content a"},
+        {"filename": "b.md", "content": "content b"},
+    ]
+    result = asyncio.run(service.build_index(documents=docs))
+
+    assert result["processed_count"] == 2
+    assert result["total_chunks_added"] == 10
+
+    assert len(fake.calls) == 1
+    payload = json.loads(fake.calls[0][1]["Payload"])
+    assert payload["action"] == "build_index"
+    assert len(payload["documents"]) == 2
+    assert payload["chunk_size"] == 500
+    assert payload["chunk_overlap"] == 50
+    assert payload["skip_existing"] is True
+
+
+def test_build_index_batching():
+    """With batch_size=2 and 5 docs, expect 3 Lambda calls."""
+    fake = FakeLambdaClient()
+    fake.set_response({"processed_count": 2, "skipped_count": 0, "total_chunks_added": 4})
+    service = _make_service(fake)
+
+    docs = [{"filename": f"doc{i}.md", "content": f"content {i}"} for i in range(5)]
+    result = asyncio.run(service.build_index(documents=docs, batch_size=2))
+
+    assert len(fake.calls) == 3  # 2 + 2 + 1
+    # Totals aggregated across 3 calls (each returning 2 processed, 4 chunks)
+    assert result["processed_count"] == 6
+    assert result["total_chunks_added"] == 12
+
+
+def test_build_index_aggregates_results():
+    fake = FakeLambdaClient()
+    call_count = {"n": 0}
+    original_invoke = fake.invoke
+
+    def _invoke(**kwargs: Any) -> dict[str, Any]:
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            fake.set_response({"processed_count": 3, "skipped_count": 1, "total_chunks_added": 15})
+        else:
+            fake.set_response({"processed_count": 2, "skipped_count": 0, "total_chunks_added": 8})
+        return original_invoke(**kwargs)
+
+    fake.invoke = _invoke  # type: ignore[method-assign]
+    service = _make_service(fake)
+
+    docs = [{"filename": f"doc{i}.md", "content": f"content {i}"} for i in range(6)]
+    result = asyncio.run(service.build_index(documents=docs, batch_size=3))
+
+    assert result["processed_count"] == 5
+    assert result["skipped_count"] == 1
+    assert result["total_chunks_added"] == 23
+
+
+def test_build_index_wraps_errors():
+    fake = FakeLambdaClient()
+    fake.set_error("timeout")
+    service = _make_service(fake)
+
+    with pytest.raises(SearchServiceError, match="Lambda execution failed"):
+        asyncio.run(service.build_index(documents=[{"filename": "a.md", "content": "x"}]))

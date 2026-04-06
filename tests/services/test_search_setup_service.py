@@ -52,18 +52,23 @@ class StubDocumentService(DocumentService):
 
 
 class StubSearchService:
-    """Captures bulk_index_documents calls and returns configurable results."""
+    """Captures bulk_index_documents and build_index calls."""
 
     def __init__(
         self,
         *,
         bulk_response: Optional[BulkIndexResponse] = None,
+        build_index_response: Optional[dict[str, int]] = None,
         error: Optional[Exception] = None,
     ) -> None:
         self.calls: list[dict[str, Any]] = []
+        self.build_index_calls: list[dict[str, Any]] = []
         self._bulk_response = bulk_response or BulkIndexResponse(
             total_chunks=0, indexed_count=0, skipped_count=0, results=[],
         )
+        self._build_index_response = build_index_response or {
+            "processed_count": 0, "skipped_count": 0, "total_chunks_added": 0,
+        }
         self._error = error
 
     async def bulk_index_documents(
@@ -83,6 +88,26 @@ class StubSearchService:
         if self._error:
             raise self._error
         return self._bulk_response
+
+    async def build_index(
+        self,
+        *,
+        documents: list[dict[str, str]],
+        chunk_size: int = 500,
+        chunk_overlap: int = 50,
+        skip_existing: bool = True,
+        batch_size: int = 50,
+    ) -> dict[str, int]:
+        self.build_index_calls.append({
+            "documents": documents,
+            "chunk_size": chunk_size,
+            "chunk_overlap": chunk_overlap,
+            "skip_existing": skip_existing,
+            "batch_size": batch_size,
+        })
+        if self._error:
+            raise self._error
+        return dict(self._build_index_response)
 
 
 # ---------------------------------------------------------------------------
@@ -113,7 +138,10 @@ def _make_setup_service(
     service._lambda_exists = lambda: lambda_exists  # type: ignore[method-assign]
     service._artifacts_exist = lambda: artifacts_exist  # type: ignore[method-assign]
     # Override build/deploy to avoid real AWS calls
-    service._build_and_upload_artifacts = lambda: None  # type: ignore[method-assign]
+    async def _noop_build() -> None:
+        pass
+
+    service._build_and_upload_artifacts = _noop_build  # type: ignore[method-assign]
     service._create_or_update_lambda = lambda: None  # type: ignore[method-assign]
     return service
 
@@ -208,21 +236,32 @@ def test_setup_propagates_search_errors():
 
 
 def test_setup_missing_artifacts_triggers_build():
-    """When artifacts don't exist, build is triggered."""
-    build_called = {"value": False}
-    doc_stub = StubDocumentService(local_docs={"count": 0, "documents": []})
-    search_stub = StubSearchService()
-    service = _make_setup_service(
-        doc_stub=doc_stub, search_stub=search_stub,
-        lambda_exists=True, artifacts_exist=False,
+    """When artifacts don't exist, build delegates to SearchService.build_index."""
+    doc_stub = StubDocumentService(
+        local_docs={"count": 2, "documents": ["a.md", "b.md"]},
+        file_contents={"a.md": "content a", "b.md": "content b"},
     )
-    def _tracking_build() -> None:
-        build_called["value"] = True
-
-    service._build_and_upload_artifacts = _tracking_build  # type: ignore[method-assign]
+    search_stub = StubSearchService(
+        build_index_response={"processed_count": 2, "skipped_count": 0, "total_chunks_added": 4},
+    )
+    service = SearchSetupService(
+        search=search_stub,  # type: ignore[arg-type]
+        document_service=doc_stub,
+        config=_DEFAULT_CONFIG,
+    )
+    # Override existence checks to avoid real AWS calls
+    service._lambda_exists = lambda: True  # type: ignore[method-assign]
+    service._artifacts_exist = lambda: False  # type: ignore[method-assign]
+    service._create_or_update_lambda = lambda: None  # type: ignore[method-assign]
 
     asyncio.run(service.setup_index())
-    assert build_called["value"] is True
+
+    # build_index should have been called with the 2 documents
+    assert len(search_stub.build_index_calls) == 1
+    docs_sent = search_stub.build_index_calls[0]["documents"]
+    assert len(docs_sent) == 2
+    assert docs_sent[0]["filename"] == "a.md"
+    assert docs_sent[1]["filename"] == "b.md"
 
 
 def test_setup_missing_lambda_triggers_deploy():

@@ -2,3 +2,4 @@ faiss-cpu
 rank-bm25
 numpy
 boto3
+langchain-text-splitters
